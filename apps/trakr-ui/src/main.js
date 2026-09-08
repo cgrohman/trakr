@@ -36,6 +36,14 @@ const el = {
   shotAxis: $("shot-axis"),
   eventLog: $("event-log"),
   btnClearLog: $("btn-clear-log"),
+  btnSettings: $("btn-settings"),
+  btnSettingsClose: $("btn-settings-close"),
+  btnSettingsSave: $("btn-settings-save"),
+  settingsBackdrop: $("settings-backdrop"),
+  settingsSaveStatus: $("settings-save-status"),
+  settingChipOnLobWedge: $("setting-chip-on-lob-wedge"),
+  settingForceChipDistance: $("setting-force-chip-distance"),
+  settingChipVia: $("setting-chip-via"),
 };
 
 function logEvent(kind, detail) {
@@ -185,6 +193,49 @@ el.selectHand.onchange = () =>
 el.btnClearLog.onclick = () => {
   el.eventLog.innerHTML = "";
 };
+
+// --- Settings ----------------------------------------------------------------
+
+async function openSettings() {
+  el.settingsSaveStatus.textContent = "";
+  const { ok, body } = await api("/v1/settings");
+  if (ok) {
+    el.settingChipOnLobWedge.checked = !!body.chip_on_lob_wedge;
+    el.settingForceChipDistance.value = body.force_chip_distance_yd ?? "";
+    el.settingChipVia.value = body.chip_via_putting ? "true" : "false";
+  }
+  el.settingsBackdrop.classList.remove("hidden");
+}
+
+function closeSettings() {
+  el.settingsBackdrop.classList.add("hidden");
+}
+
+async function saveSettings() {
+  const distanceRaw = el.settingForceChipDistance.value.trim();
+  const body = {
+    chip_on_lob_wedge: el.settingChipOnLobWedge.checked,
+    force_chip_distance_yd: distanceRaw === "" ? null : Number(distanceRaw),
+    chip_via_putting: el.settingChipVia.value === "true",
+  };
+  el.settingsSaveStatus.textContent = "Saving…";
+  const { ok } = await api("/v1/settings", { method: "POST", body: JSON.stringify(body) });
+  el.settingsSaveStatus.textContent = ok ? "Saved" : "Failed to save";
+  if (ok) {
+    logEvent("status", "settings saved");
+    setTimeout(closeSettings, 500);
+  }
+}
+
+el.btnSettings.onclick = openSettings;
+el.btnSettingsClose.onclick = closeSettings;
+el.btnSettingsSave.onclick = saveSettings;
+el.settingsBackdrop.onclick = (ev) => {
+  if (ev.target === el.settingsBackdrop) closeSettings();
+};
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && !el.settingsBackdrop.classList.contains("hidden")) closeSettings();
+});
 
 // --- Live events (SSE) ------------------------------------------------------
 

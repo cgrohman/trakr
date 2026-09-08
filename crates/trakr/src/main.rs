@@ -112,6 +112,29 @@ enum Cmd {
     },
     /// Disconnect the current session.
     Disconnect,
+    /// View or change chipping settings. Persisted -- they survive a daemon
+    /// restart. With no flags, shows the current settings.
+    #[command(
+        after_help = "Examples:\n  trakr settings                                        # show current settings\n  trakr settings --force-chip-distance-yd 20            # auto-chip within 20 yards\n  trakr settings --clear-force-chip-distance            # disable the distance override\n  trakr settings --chip-via-normal                      # chipping arms hardware Normal instead of Putting"
+    )]
+    Settings {
+        /// Auto-switch to Chipping when the sim reports a lob wedge.
+        #[arg(long, value_parser = ["true", "false"])]
+        chip_on_lob_wedge: Option<String>,
+        /// Auto-switch to Chipping within this many yards of the target,
+        /// overriding club selection entirely.
+        #[arg(long, conflicts_with = "clear_force_chip_distance")]
+        force_chip_distance_yd: Option<f32>,
+        /// Disable the distance-based override.
+        #[arg(long)]
+        clear_force_chip_distance: bool,
+        /// Chipping arms hardware Putting mode (the default).
+        #[arg(long, conflicts_with = "chip_via_normal")]
+        chip_via_putting: bool,
+        /// Chipping arms hardware Normal mode instead.
+        #[arg(long)]
+        chip_via_normal: bool,
+    },
     /// Stream session events (status, shots, errors) as they happen.
     #[command(
         after_help = "Examples:\n  trakr events                                    # human-readable TOON lines\n  trakr events --json | jq .                      # pipe raw JSON to another tool"
@@ -167,11 +190,14 @@ async fn main() -> Result<()> {
             let sim = trakr_openconnect::Config {
                 host: sim_host,
                 port: sim_port,
-                force_chip_distance_yd,
-                chip_on_lob_wedge: !no_chip_on_lob_wedge,
                 ..Default::default()
             };
-            trakr_daemon::serve(bind, sim).await?;
+            let initial_chip_settings = trakr_core::ChipSettings {
+                chip_on_lob_wedge: !no_chip_on_lob_wedge,
+                force_chip_distance_yd,
+                ..Default::default()
+            };
+            trakr_daemon::serve(bind, sim, initial_chip_settings).await?;
             0
         }
         Some(Cmd::Devices {
@@ -206,6 +232,24 @@ async fn main() -> Result<()> {
             .await?
         }
         Some(Cmd::Disconnect) => disconnect(&client, &cli.daemon).await?,
+        Some(Cmd::Settings {
+            chip_on_lob_wedge,
+            force_chip_distance_yd,
+            clear_force_chip_distance,
+            chip_via_putting,
+            chip_via_normal,
+        }) => {
+            settings(
+                &client,
+                &cli.daemon,
+                chip_on_lob_wedge,
+                force_chip_distance_yd,
+                clear_force_chip_distance,
+                chip_via_putting,
+                chip_via_normal,
+            )
+            .await?
+        }
         Some(Cmd::Events { json }) => events(&client, &cli.daemon, json).await?,
         Some(Cmd::TestShot {
             host,
@@ -448,6 +492,75 @@ async fn disconnect(client: &reqwest::Client, daemon: &str) -> Result<i32> {
     Ok(0)
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn settings(
+    client: &reqwest::Client,
+    daemon: &str,
+    chip_on_lob_wedge: Option<String>,
+    force_chip_distance_yd: Option<f32>,
+    clear_force_chip_distance: bool,
+    chip_via_putting: bool,
+    chip_via_normal: bool,
+) -> Result<i32> {
+    let mut body = serde_json::Map::new();
+    if let Some(v) = chip_on_lob_wedge {
+        body.insert("chip_on_lob_wedge".into(), Value::Bool(v == "true"));
+    }
+    if clear_force_chip_distance {
+        body.insert("force_chip_distance_yd".into(), Value::Null);
+    } else if let Some(yd) = force_chip_distance_yd {
+        body.insert("force_chip_distance_yd".into(), serde_json::json!(yd));
+    }
+    if chip_via_putting {
+        body.insert("chip_via_putting".into(), Value::Bool(true));
+    } else if chip_via_normal {
+        body.insert("chip_via_putting".into(), Value::Bool(false));
+    }
+
+    let resp = if body.is_empty() {
+        client
+            .get(format!("{daemon}/v1/settings"))
+            .send()
+            .await
+            .context("could not reach the trakr daemon")?
+    } else {
+        client
+            .post(format!("{daemon}/v1/settings"))
+            .json(&Value::Object(body))
+            .send()
+            .await
+            .context("could not reach the trakr daemon")?
+    };
+    if !resp.status().is_success() {
+        return print_error_response(resp).await;
+    }
+    let s: Value = resp.json().await?;
+    print!(
+        "{}",
+        toon::record(
+            "settings",
+            &[
+                (
+                    "chip_on_lob_wedge",
+                    s["chip_on_lob_wedge"].as_bool().unwrap_or(true).to_string()
+                ),
+                (
+                    "force_chip_distance_yd",
+                    s["force_chip_distance_yd"]
+                        .as_f64()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "off".into())
+                ),
+                (
+                    "chip_via_putting",
+                    s["chip_via_putting"].as_bool().unwrap_or(true).to_string()
+                ),
+            ],
+        )
+    );
+    Ok(0)
+}
+
 async fn simple_post(
     client: &reqwest::Client,
     daemon: &str,
@@ -583,7 +696,8 @@ async fn test_shot(
     };
     let (tx, rx) = broadcast::channel::<Event>(EVENT_BUS_CAPACITY);
     let (cmd_tx, mut cmd_rx) = mpsc::channel(16);
-    let out = tokio::spawn(trakr_openconnect::run(cfg, rx, cmd_tx));
+    let (_chip_tx, chip_rx) = tokio::sync::watch::channel(trakr_core::ChipSettings::default());
+    let out = tokio::spawn(trakr_openconnect::run(cfg, chip_rx, rx, cmd_tx));
     let log_cmds = tokio::spawn(async move {
         while let Some(c) = cmd_rx.recv().await {
             tracing::info!(?c, "sim asked for");

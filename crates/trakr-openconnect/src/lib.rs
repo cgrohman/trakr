@@ -10,9 +10,9 @@ use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, watch};
 use tracing::{debug, info, warn};
-use trakr_core::{Command, Event, Handedness, ShotMode};
+use trakr_core::{ChipSettings, Command, Event, Handedness, ShotMode};
 use wire::{Request, Response, ShotDataOptions};
 
 #[derive(Debug, Clone)]
@@ -23,20 +23,10 @@ pub struct Config {
     pub heartbeat: Duration,
     pub reconnect_delay: Duration,
     /// Derive shot mode from the sim's reported club/distance-to-target
-    /// (putter -> Putting, everything else per `force_chip_distance_yd` and
-    /// `chip_on_lob_wedge` below). If false, shot mode is only ever changed
-    /// by an explicit `SetShotMode` command.
+    /// (putter -> Putting, everything else per the current [`ChipSettings`]).
+    /// If false, shot mode is only ever changed by an explicit
+    /// `SetShotMode` command.
     pub auto_shot_mode: bool,
-    /// Chip mode auto-triggers when the club is a lob wedge (`"LW"`). This is
-    /// the vendor connector's default behaviour. See
-    /// docs/skytrak-protocol/chipping-mode.md.
-    pub chip_on_lob_wedge: bool,
-    /// Chip mode auto-triggers by distance to target instead of club,
-    /// matching the vendor connector's `ForceChipDistanceToTarget` setting.
-    /// `Some(yards)` overrides `chip_on_lob_wedge` entirely: within that
-    /// distance (and not on the putter) is Chipping, beyond it is Normal,
-    /// no matter what club is selected. `None` disables the override.
-    pub force_chip_distance_yd: Option<f32>,
 }
 
 impl Default for Config {
@@ -48,8 +38,6 @@ impl Default for Config {
             heartbeat: Duration::from_secs(2),
             reconnect_delay: Duration::from_secs(5),
             auto_shot_mode: true,
-            chip_on_lob_wedge: true,
-            force_chip_distance_yd: None,
         }
     }
 }
@@ -59,11 +47,11 @@ impl Default for Config {
 /// docs/skytrak-protocol/chipping-mode.md): putter always wins; a configured
 /// distance threshold overrides club selection entirely; otherwise a lob
 /// wedge triggers chipping if enabled; everything else is Normal.
-fn resolve_shot_mode(cfg: &Config, club: &str, distance_to_target: Option<f32>) -> ShotMode {
+fn resolve_shot_mode(chip: &ChipSettings, club: &str, distance_to_target: Option<f32>) -> ShotMode {
     if club == "PT" {
         return ShotMode::Putting;
     }
-    if let (Some(threshold), Some(dist)) = (cfg.force_chip_distance_yd, distance_to_target) {
+    if let (Some(threshold), Some(dist)) = (chip.force_chip_distance_yd, distance_to_target) {
         if threshold > 0.0 {
             return if dist <= threshold {
                 ShotMode::Chipping
@@ -72,7 +60,7 @@ fn resolve_shot_mode(cfg: &Config, club: &str, distance_to_target: Option<f32>) 
             };
         }
     }
-    if cfg.chip_on_lob_wedge && club == "LW" {
+    if chip.chip_on_lob_wedge && club == "LW" {
         return ShotMode::Chipping;
     }
     ShotMode::Normal
@@ -81,6 +69,7 @@ fn resolve_shot_mode(cfg: &Config, club: &str, distance_to_target: Option<f32>) 
 /// Run the output until the event bus closes. Reconnects to the sim forever.
 pub async fn run(
     cfg: Config,
+    chip_settings: watch::Receiver<ChipSettings>,
     mut events: broadcast::Receiver<Event>,
     commands: mpsc::Sender<Command>,
 ) -> anyhow::Result<()> {
@@ -141,7 +130,7 @@ pub async fn run(
                         if n == 0 { anyhow::bail!("sim closed connection"); }
                         acc.extend_from_slice(&buf[..n]);
                         for resp in wire::drain_responses(&mut acc) {
-                            handle_response(&cfg, &resp, &commands).await;
+                            handle_response(&cfg, &resp, &commands, &chip_settings).await;
                         }
                     }
                 }
@@ -164,7 +153,12 @@ async fn send(stream: &mut TcpStream, req: &Request) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_response(cfg: &Config, resp: &Response, commands: &mpsc::Sender<Command>) {
+async fn handle_response(
+    cfg: &Config,
+    resp: &Response,
+    commands: &mpsc::Sender<Command>,
+    chip_settings: &watch::Receiver<ChipSettings>,
+) {
     debug!(?resp, "sim response");
     if resp.code == 201 {
         if let Some(p) = &resp.player {
@@ -183,7 +177,10 @@ async fn handle_response(cfg: &Config, resp: &Response, commands: &mpsc::Sender<
             }
             if cfg.auto_shot_mode {
                 if let Some(club) = &p.club {
-                    let mode = resolve_shot_mode(cfg, club, p.distance_to_target);
+                    // .borrow() gives the latest value the settings API has
+                    // pushed, even mid-session -- no reconnect needed.
+                    let chip = *chip_settings.borrow();
+                    let mode = resolve_shot_mode(&chip, club, p.distance_to_target);
                     let _ = commands.send(Command::SetShotMode(mode)).await;
                 }
             }
@@ -221,11 +218,11 @@ impl Request {
 mod tests {
     use super::*;
 
-    fn cfg(chip_on_lob_wedge: bool, force_chip_distance_yd: Option<f32>) -> Config {
-        Config {
+    fn cfg(chip_on_lob_wedge: bool, force_chip_distance_yd: Option<f32>) -> ChipSettings {
+        ChipSettings {
             chip_on_lob_wedge,
             force_chip_distance_yd,
-            ..Default::default()
+            chip_via_putting: true,
         }
     }
 

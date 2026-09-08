@@ -9,9 +9,17 @@
 <body>
   <header>
     <h1>trakr</h1>
-    <div class="daemon-status">
-      <span id="daemon-dot" class="dot dot-unknown"></span>
-      <span id="daemon-label">connecting to daemon…</span>
+    <div class="header-right">
+      <div class="daemon-status">
+        <span id="daemon-dot" class="dot dot-unknown"></span>
+        <span id="daemon-label">connecting to daemon…</span>
+      </div>
+      <button id="btn-settings" class="icon-button" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
     </div>
   </header>
 
@@ -114,6 +122,47 @@
       <div id="event-log" class="event-log"></div>
     </section>
   </main>
+
+  <div id="settings-backdrop" class="modal-backdrop hidden">
+    <div class="modal" role="dialog" aria-labelledby="settings-title">
+      <div class="modal-head">
+        <h2 id="settings-title">Settings</h2>
+        <button id="btn-settings-close" class="icon-button" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <h3 class="settings-group-title">Chipping mode</h3>
+        <p class="settings-hint">
+          No launch monitor has a real "chipping" mode — this decides which
+          real mode it maps to, and when it switches automatically. Saved
+          settings persist across restarts.
+        </p>
+
+        <label class="settings-row">
+          <span>Auto-switch on lob wedge ("LW")</span>
+          <input type="checkbox" id="setting-chip-on-lob-wedge" />
+        </label>
+
+        <label class="settings-row">
+          <span>Force chip within distance (yards)</span>
+          <input type="number" id="setting-force-chip-distance" min="0" step="1" placeholder="off" />
+        </label>
+
+        <label class="settings-row">
+          <span>Chipping arms hardware mode</span>
+          <select id="setting-chip-via">
+            <option value="true">Putting</option>
+            <option value="false">Normal</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="modal-foot">
+        <span id="settings-save-status" class="settings-save-status"></span>
+        <button id="btn-settings-save" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="main.js"></script>
 </body>
