@@ -31,3 +31,8 @@ research/GSPro4OSP/
 /.playwright-mcp/
 .DS_Store
 research/oracle/*.sqlite-journal
+
+# Tauri app
+apps/trakr-ui/node_modules/
+apps/trakr-ui/src-tauri/target/
+apps/trakr-ui/src-tauri/gen/

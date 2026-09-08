@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>trakr</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>trakr</h1>
+    <div class="daemon-status">
+      <span id="daemon-dot" class="dot dot-unknown"></span>
+      <span id="daemon-label">connecting to daemon…</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel" id="panel-devices">
+      <div class="panel-head">
+        <h2>Devices</h2>
+        <button id="btn-scan">Scan</button>
+      </div>
+      <input
+        id="input-broadcast"
+        type="text"
+        class="broadcast-input"
+        placeholder="Broadcast address (optional, e.g. 192.168.7.255)"
+      />
+      <ul id="device-list" class="device-list">
+        <li class="empty">Click Scan to look for a launch monitor.</li>
+      </ul>
+    </section>
+
+    <section class="panel" id="panel-session">
+      <div class="panel-head">
+        <h2>Session</h2>
+        <button id="btn-disconnect" disabled>Disconnect</button>
+      </div>
+
+      <div id="session-empty" class="empty-state">
+        No launch monitor connected. Scan for a device, then Connect.
+      </div>
+
+      <div id="session-active" class="hidden">
+        <div class="status-grid">
+          <div class="stat">
+            <span class="stat-label">Device</span>
+            <span class="stat-value" id="stat-device">—</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Firmware</span>
+            <span class="stat-value" id="stat-firmware">—</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Armed</span>
+            <span class="stat-value" id="stat-armed">—</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Battery</span>
+            <span class="stat-value" id="stat-battery">—</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Signal</span>
+            <span class="stat-value" id="stat-rssi">—</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Mode</span>
+            <span class="stat-value" id="stat-mode">—</span>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="btn-arm" class="primary">Arm</button>
+          <button id="btn-disarm">Disarm</button>
+          <div class="control-group">
+            <label>Mode</label>
+            <select id="select-mode">
+              <option value="normal">Normal</option>
+              <option value="putting">Putting</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>Hand</label>
+            <select id="select-hand">
+              <option value="right">Right</option>
+              <option value="left">Left</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel panel-wide" id="panel-shot">
+      <div class="panel-head">
+        <h2>Last Shot</h2>
+      </div>
+      <div id="shot-empty" class="empty-state">No shot yet.</div>
+      <div id="shot-data" class="shot-grid hidden">
+        <div class="stat"><span class="stat-label">Speed</span><span class="stat-value" id="shot-speed">—</span></div>
+        <div class="stat"><span class="stat-label">Launch angle</span><span class="stat-value" id="shot-vla">—</span></div>
+        <div class="stat"><span class="stat-label">Horiz. angle</span><span class="stat-value" id="shot-hla">—</span></div>
+        <div class="stat"><span class="stat-label">Total spin</span><span class="stat-value" id="shot-spin">—</span></div>
+        <div class="stat"><span class="stat-label">Spin axis</span><span class="stat-value" id="shot-axis">—</span></div>
+      </div>
+    </section>
+
+    <section class="panel panel-wide" id="panel-events">
+      <div class="panel-head">
+        <h2>Events</h2>
+        <button id="btn-clear-log">Clear</button>
+      </div>
+      <div id="event-log" class="event-log"></div>
+    </section>
+  </main>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

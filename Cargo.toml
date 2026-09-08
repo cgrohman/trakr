@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/trakr-core", "crates/trakr-skytrak", "crates/trakr-openconnect", "crates/trakr", "crates/trakr-daemon"]
+members = ["crates/trakr-core", "crates/trakr-skytrak", "crates/trakr-openconnect", "crates/trakr", "crates/trakr-daemon", "apps/trakr-ui/src-tauri"]
 
 [workspace.package]
 version = "0.1.0"
@@ -31,3 +31,10 @@ axum = { version = "0.8", features = ["json"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 futures-util = "0.3"
+tower-http = { version = "0.6", features = ["cors"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+strip = true

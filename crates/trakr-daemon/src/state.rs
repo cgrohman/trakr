@@ -191,7 +191,7 @@ impl AppState {
             Event::ShotStarted => {}
             Event::Shot(shot) => session.last_shot = Some(shot),
             Event::Disconnected { .. } => session.status.armed = false,
-            Event::Misread { .. } | Event::Error(_) | Event::Discovered(_) => {}
+            Event::Misread { .. } | Event::Error { .. } | Event::Discovered(_) => {}
         }
     }
 }
