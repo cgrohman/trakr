@@ -29,7 +29,8 @@ pub fn skytrak_crc(pkt: &[u8]) -> u32 {
         "CRC input must be a whole number of u32 words"
     );
     let mut crc: u32 = 0xFFFFFFFF;
-    for word in pkt.chunks_exact(4) {
+    let (chunks, _remainder) = pkt.as_chunks::<4>();
+    for word in chunks {
         for &b in &[word[3], word[2], word[1], word[0]] {
             crc = (crc << 8) ^ CRC_TABLE[((crc >> 24) ^ b as u32) as usize & 0xFF];
         }
