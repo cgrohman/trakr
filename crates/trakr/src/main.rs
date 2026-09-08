@@ -36,10 +36,7 @@ enum Cmd {
     /// Run the daemon in the foreground: owns the launch monitor session and
     /// serves the HTTP + SSE API that this CLI, an agent, or the Tauri UI drive.
     #[command(
-        after_help = "Examples:\n  trakr serve                                    # sim on this machine, default port 921\n  trakr serve --sim-host 192.168.1.50 --sim-port 921\n  RUST_LOG=debug trakr serve                     # verbose wire-level logs on stderr"
-    )]
-    #[command(
-        after_help = "Examples:\n  trakr serve\n  trakr serve --force-chip-distance-yd 20        # auto-switch to chipping within 20 yards of the pin\n  trakr serve --no-chip-on-lob-wedge              # only distance triggers chipping, never club selection"
+        after_help = "Examples:\n  trakr serve                                    # sim on this machine, default port 921\n  trakr serve --sim-host 192.168.1.50 --sim-port 921\n  trakr serve --force-chip-distance-yd 20        # auto-switch to chipping within 20 yards of the pin\n  trakr serve --no-chip-on-lob-wedge              # only distance triggers chipping, never club selection\n  RUST_LOG=debug trakr serve                     # verbose wire-level logs on stderr"
     )]
     Serve {
         /// Address the HTTP + SSE API listens on.
@@ -64,13 +61,14 @@ enum Cmd {
     },
     /// Discover launch monitors on the network.
     #[command(
-        after_help = "Examples:\n  trakr devices\n  trakr devices --broadcast 192.168.7.255        # if the global broadcast doesn't reach your subnet\n  trakr devices --window-ms 6000                 # wait longer on a slow network"
+        after_help = "Automatically scans every active local network (WiFi or wired) -- no need to know your subnet.\n\nExamples:\n  trakr devices\n  trakr devices --broadcast 192.168.7.255        # also scan a network this host isn't on\n  trakr devices --window-ms 6000                 # wait longer on a slow network"
     )]
     Devices {
         /// How long to wait for replies.
         #[arg(long, default_value_t = 3000)]
         window_ms: u64,
-        /// Directed broadcast address, e.g. 192.168.7.255 for a /22. Repeatable.
+        /// Extra directed broadcast address to scan, beyond the ones
+        /// auto-detected from this host's own network interfaces. Repeatable.
         #[arg(long = "broadcast")]
         broadcast: Vec<String>,
     },
