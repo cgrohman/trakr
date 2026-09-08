@@ -23,6 +23,12 @@ pub enum Handedness {
 pub enum ShotMode {
     Normal,
     Putting,
+    /// Not a distinct hardware mode on any known launch monitor. Drivers map
+    /// this to whichever native mode (usually Putting) reads a chip shot
+    /// most reliably, and may apply tighter launch-angle clamping. See
+    /// docs/skytrak-protocol/chipping-mode.md for how the original SkyTrak
+    /// connector implements this.
+    Chipping,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

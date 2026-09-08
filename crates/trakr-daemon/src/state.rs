@@ -49,6 +49,11 @@ pub struct ConnectRequest {
     pub broadcast: Vec<Ipv4Addr>,
     #[serde(default)]
     pub right_handed: Option<bool>,
+    /// Whether the box's "chipping" mode should arm as hardware Putting
+    /// (true, the vendor default) or hardware Normal (false). See
+    /// docs/skytrak-protocol/chipping-mode.md.
+    #[serde(default)]
+    pub chip_via_putting: Option<bool>,
 }
 
 fn default_kind() -> String {
@@ -126,9 +131,12 @@ impl AppState {
             }
         }
         let right_handed = req.right_handed.unwrap_or(true);
+        let chip_via_putting = req.chip_via_putting.unwrap_or(true);
         let driver: Box<dyn trakr_core::LaunchMonitor> = match (req.name, req.address) {
             (Some(name), Some(addr)) => Box::new(
-                trakr_skytrak::SkytrakDriver::connect_to(name, addr).with_handedness(right_handed),
+                trakr_skytrak::SkytrakDriver::connect_to(name, addr)
+                    .with_handedness(right_handed)
+                    .with_chip_via_putting(chip_via_putting),
             ),
             (Some(_), None) | (None, Some(_)) => return Err("name_and_address_required_together"),
             (None, None) => Box::new(
@@ -136,7 +144,8 @@ impl AppState {
                     req.broadcast,
                     Duration::from_secs(3),
                 )
-                .with_handedness(right_handed),
+                .with_handedness(right_handed)
+                .with_chip_via_putting(chip_via_putting),
             ),
         };
 

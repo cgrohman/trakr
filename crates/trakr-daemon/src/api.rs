@@ -11,6 +11,7 @@ use serde_json::json;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
 use trakr_core::{Command, Handedness, ShotMode};
 
 use crate::state::{AppState, ConnectRequest};
@@ -35,6 +36,7 @@ pub fn router(state: AppState) -> Router {
                 .allow_methods(Any)
                 .allow_headers(Any),
         )
+        .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
 
@@ -138,11 +140,12 @@ async fn set_mode(State(state): State<AppState>, Json(body): Json<ModeBody>) -> 
     let mode = match body.mode.as_str() {
         "normal" => ShotMode::Normal,
         "putting" => ShotMode::Putting,
+        "chipping" => ShotMode::Chipping,
         _ => {
             return err(
                 422,
                 "invalid_mode",
-                "mode must be \"normal\" or \"putting\"",
+                "mode must be \"normal\", \"putting\", or \"chipping\"",
             )
         }
     };

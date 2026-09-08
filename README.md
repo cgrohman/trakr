@@ -55,7 +55,7 @@ Run `trakr <command> --help` for flags and examples on any subcommand.
 | `connect` | Connect to a device by name+address, or auto-discover |
 | `status` | Show the current session's device and status |
 | `arm` / `disarm` | Arm or disarm the connected device |
-| `mode` | Set shot mode (`normal` \| `putting`) |
+| `mode` | Set shot mode (`normal` \| `putting` \| `chipping`) |
 | `hand` | Set player handedness (`right` \| `left`) |
 | `disconnect` | End the current session |
 | `events` | Stream session events (status, shots, errors) live |
