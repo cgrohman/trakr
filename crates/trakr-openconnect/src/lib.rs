@@ -62,7 +62,12 @@ pub async fn run(
             }
         };
         stream.set_nodelay(true)?;
-        if let Err(e) = send(&mut stream, &Request::heartbeat(&cfg.device_id, shot_number, ready)).await {
+        if let Err(e) = send(
+            &mut stream,
+            &Request::heartbeat(&cfg.device_id, shot_number, ready),
+        )
+        .await
+        {
             warn!(error = %e, "initial heartbeat failed");
             continue;
         }
@@ -126,19 +131,35 @@ async fn handle_response(cfg: &Config, resp: &Response, commands: &mpsc::Sender<
     if resp.code == 201 {
         if let Some(p) = &resp.player {
             match p.handed.as_deref() {
-                Some("RH") => { let _ = commands.send(Command::SetHandedness(Handedness::Right)).await; }
-                Some("LH") => { let _ = commands.send(Command::SetHandedness(Handedness::Left)).await; }
+                Some("RH") => {
+                    let _ = commands
+                        .send(Command::SetHandedness(Handedness::Right))
+                        .await;
+                }
+                Some("LH") => {
+                    let _ = commands
+                        .send(Command::SetHandedness(Handedness::Left))
+                        .await;
+                }
                 _ => {}
             }
             if cfg.putting_from_club {
                 if let Some(club) = &p.club {
-                    let mode = if club == "PT" { ShotMode::Putting } else { ShotMode::Normal };
+                    let mode = if club == "PT" {
+                        ShotMode::Putting
+                    } else {
+                        ShotMode::Normal
+                    };
                     let _ = commands.send(Command::SetShotMode(mode)).await;
                 }
             }
         }
     } else if resp.code >= 500 {
-        warn!(code = resp.code, msg = resp.message.as_deref().unwrap_or(""), "sim rejected message");
+        warn!(
+            code = resp.code,
+            msg = resp.message.as_deref().unwrap_or(""),
+            "sim rejected message"
+        );
     }
 }
 

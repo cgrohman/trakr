@@ -35,7 +35,12 @@ impl BallData {
     /// Fill total spin and axis from components, or components from total and
     /// axis, whichever pair is present.
     pub fn complete_spin(&mut self) {
-        match (self.total_spin_rpm, self.spin_axis_deg, self.back_spin_rpm, self.side_spin_rpm) {
+        match (
+            self.total_spin_rpm,
+            self.spin_axis_deg,
+            self.back_spin_rpm,
+            self.side_spin_rpm,
+        ) {
             (Some(t), Some(a), None, None) => {
                 let r = a.to_radians();
                 self.back_spin_rpm = Some((t * r.cos()).round());
@@ -43,7 +48,11 @@ impl BallData {
             }
             (None, None, Some(b), Some(s)) => {
                 self.total_spin_rpm = Some((b * b + s * s).sqrt().round());
-                self.spin_axis_deg = Some(if b != 0.0 { s.atan2(b).to_degrees() } else { 0.0 });
+                self.spin_axis_deg = Some(if b != 0.0 {
+                    s.atan2(b).to_degrees()
+                } else {
+                    0.0
+                });
             }
             _ => {}
         }

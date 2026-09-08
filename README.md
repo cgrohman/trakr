@@ -23,17 +23,34 @@ vendor app, no subscription, no Wine.
 
 ```sh
 cargo build --release
-# Prove the sim link: sends one synthetic drive to Muni / GSPro on port 921.
+
+# Start the daemon: owns the launch monitor session, serves the HTTP + SSE
+# API, and bridges shots to your simulator's GSPro Open Connect listener.
+./target/release/trakr serve --sim-host 127.0.0.1 --sim-port 921 &
+
+./target/release/trakr devices                                  # find it
+./target/release/trakr connect --name <name> --address <ip>     # connect
+./target/release/trakr arm                                      # ready for a shot
+./target/release/trakr events                                   # watch it happen
+
+# Or prove just the sim link, no hardware involved:
 ./target/release/trakr test-shot --host 127.0.0.1 --port 921
 ```
+
+Full HTTP API reference: [docs/api.md](docs/api.md). The API is the source
+of truth — the CLI above and the planned Tauri UI are both thin clients over
+it, so anything either can do, an agent can do with the same HTTP calls.
 
 ## Status
 
 - [x] Core model and event bus
 - [x] Open Connect output
-- [ ] SkyTrak wire protocol documented (`docs/skytrak-protocol.md`)
-- [ ] SkyTrak driver: discovery, connect, arm, shots
-- [ ] `trakr run` daemon with config file
+- [x] SkyTrak wire protocol documented and confirmed against real hardware (`docs/skytrak-protocol/`)
+- [x] SkyTrak driver: discovery, connect handshake, arm/disarm, status — confirmed against real hardware
+- [x] `trakr serve` daemon with HTTP + SSE API (`docs/api.md`, `GET /v1/openapi.json`)
+- [x] AXI-conventioned CLI (`trakr devices/connect/status/arm/disarm/mode/hand/events`)
+- [ ] Shot capture: decoding the original SkyTrak's camera images into ball speed/spin/angles (see `docs/skytrak-protocol/shot-data.md`)
+- [ ] Tauri UI on top of the same API
 - [ ] Additional drivers
 
 ## Legal
