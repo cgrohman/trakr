@@ -1,0 +1,50 @@
+name: Rust
+
+# Fast feedback loop: build, test, and lint the whole Cargo workspace
+# (including the Tauri app's Rust side, which is why Linux needs
+# webkit2gtk headers even for a plain `cargo build`) on every platform
+# trakr targets. See .github/workflows/tauri-build.yml for the actual
+# installable desktop bundles.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # Pinned to 22.04, not `ubuntu-latest`: Tauri's webkit2gtk package
+        # name has changed across Ubuntu releases before.
+        platform: [ubuntu-22.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: install system dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: build
+        run: cargo build --workspace --all-targets
+
+      - name: test
+        run: cargo test --workspace
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: fmt
+        run: cargo fmt --all -- --check
