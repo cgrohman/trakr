@@ -18,8 +18,10 @@ jobs:
       fail-fast: false
       matrix:
         # Pinned to 22.04, not `ubuntu-latest`: Tauri's webkit2gtk package
-        # name has changed across Ubuntu releases before.
-        platform: [ubuntu-22.04, windows-latest, macos-latest]
+        # name has changed across Ubuntu releases before. No macOS here on
+        # purpose -- CI targets Linux and Windows; macOS is developed and
+        # tested locally instead (that's this project's dev machine).
+        platform: [ubuntu-22.04, windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
