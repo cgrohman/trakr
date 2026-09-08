@@ -1,0 +1,6 @@
+ball_tracking.exe - webcam putting tracker
+Project: https://github.com/alleexx/cam-putting-py (tag 1.6)
+License: GNU GPL v3 (see LICENSE). This program is distributed unmodified as a
+separate application alongside Launch Monitor Connect, which drives it as a
+child process and receives putts over HTTP. The corresponding source for this
+exact build is cam-putting-py-1.6-source.zip in this folder.

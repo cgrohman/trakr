@@ -1,0 +1,32 @@
+# Rust
+/target/
+**/target/
+Cargo.lock.bak
+
+# Proprietary binaries and anything derived from them stay out of git.
+# Regenerate with the notes in research/README.md.
+research/gspro-connector/*.exe
+research/gspro-connector/extracted/
+research/gspro-connector/decompiled/
+research/gspro-connector/*.strings.txt
+research/ghidra/proj.gpr
+research/ghidra/proj.rep/
+research/ghidra/out/
+research/ghidra/*.log
+research/muni-lmc/*.dll
+research/muni-lmc/*.pdb
+research/muni-lmc/*.json
+research/muni-lmc/decompiled/
+research/oracle/*.dll
+research/oracle/*.exe
+research/oracle/*.bin
+research/oracle/*.sqlite
+research/OpenSkyPlus/
+research/OpenSkyPlus2/
+research/GSPro4OSP/
+
+# Local tooling (Ghidra, Wine)
+/tools/*
+!/tools/ghidra_scripts/
+/.playwright-mcp/
+.DS_Store
