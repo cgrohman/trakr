@@ -29,6 +29,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/session/disarm", post(disarm))
         .route("/v1/session/mode", post(set_mode))
         .route("/v1/session/hand", post(set_hand))
+        .route("/v1/settings", get(get_settings).post(post_settings))
         .route("/v1/events", get(events))
         .layer(
             CorsLayer::new()
@@ -164,6 +165,49 @@ async fn set_hand(State(state): State<AppState>, Json(body): Json<HandBody>) -> 
         _ => return err(422, "invalid_hand", "hand must be \"right\" or \"left\""),
     };
     command_response(&state, Command::SetHandedness(hand)).await
+}
+
+async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
+    Json(state.chip_settings()).into_response()
+}
+
+async fn post_settings(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let Some(obj) = body.as_object() else {
+        return err(422, "invalid_body", "expected a JSON object");
+    };
+    let chip_on_lob_wedge = match obj.get("chip_on_lob_wedge") {
+        None => None,
+        Some(serde_json::Value::Bool(b)) => Some(*b),
+        Some(_) => return err(422, "invalid_chip_on_lob_wedge", "must be a boolean"),
+    };
+    // Present-and-null means "clear it"; absent means "leave unchanged" --
+    // that distinction is why this isn't just Option<f32>.
+    let force_chip_distance_yd = match obj.get("force_chip_distance_yd") {
+        None => None,
+        Some(serde_json::Value::Null) => Some(None),
+        Some(v) => match v.as_f64() {
+            Some(n) => Some(Some(n as f32)),
+            None => {
+                return err(
+                    422,
+                    "invalid_force_chip_distance_yd",
+                    "must be a number of yards, or null to disable",
+                )
+            }
+        },
+    };
+    let chip_via_putting = match obj.get("chip_via_putting") {
+        None => None,
+        Some(serde_json::Value::Bool(b)) => Some(*b),
+        Some(_) => return err(422, "invalid_chip_via_putting", "must be a boolean"),
+    };
+    let updated = state
+        .update_chip_settings(chip_on_lob_wedge, force_chip_distance_yd, chip_via_putting)
+        .await;
+    Json(updated).into_response()
 }
 
 async fn command_response(state: &AppState, cmd: Command) -> axum::response::Response {

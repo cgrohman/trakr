@@ -73,6 +73,34 @@
     "/v1/session/hand": {
       "post": { "summary": "Set player handedness", "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "hand": { "type": "string", "enum": ["right", "left"] } }, "required": ["hand"] } } } }, "responses": { "202": { "description": "Command accepted" }, "422": { "description": "Invalid hand" }, "404": { "description": "No active session" } } }
     },
+    "/v1/settings": {
+      "get": {
+        "summary": "Current chipping settings",
+        "description": "Persisted to disk -- survives a daemon/app restart. See docs/skytrak-protocol/chipping-mode.md.",
+        "responses": { "200": { "description": "Current settings", "content": { "application/json": { "example": { "chip_on_lob_wedge": true, "force_chip_distance_yd": null, "chip_via_putting": true } } } } }
+      },
+      "post": {
+        "summary": "Update chipping settings",
+        "description": "Partial update: any field omitted is left unchanged. Applies immediately to any active session (no reconnect needed) and is saved to disk before responding.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "properties": {
+                "chip_on_lob_wedge": { "type": "boolean", "description": "Auto-switch to Chipping when the sim reports a lob wedge (\"LW\")." },
+                "force_chip_distance_yd": { "type": ["number", "null"], "description": "Auto-switch to Chipping within this many yards of the target, overriding club selection entirely. Send null to disable; omit to leave unchanged." },
+                "chip_via_putting": { "type": "boolean", "description": "Whether Chipping arms the box's Putting mode (true, default) or Normal mode (false)." }
+              } },
+              "examples": {
+                "set a distance threshold": { "value": { "force_chip_distance_yd": 20 } },
+                "disable it": { "value": { "force_chip_distance_yd": null } },
+                "map chipping to hardware normal": { "value": { "chip_via_putting": false } }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Updated settings, same shape as GET" }, "422": { "description": "Invalid field type" } }
+      }
+    },
     "/v1/events": {
       "get": {
         "summary": "Stream session events (Server-Sent Events)",

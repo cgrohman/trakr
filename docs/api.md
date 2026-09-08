@@ -27,6 +27,8 @@ connected, both return `200` rather than erroring.
 | POST | `/v1/session/disarm` | Disarm |
 | POST | `/v1/session/mode` | `{"mode": "normal"\|"putting"\|"chipping"}` (see `docs/skytrak-protocol/chipping-mode.md`) |
 | POST | `/v1/session/hand` | `{"hand": "right"\|"left"}` |
+| GET | `/v1/settings` | Current chipping settings (persisted to disk) |
+| POST | `/v1/settings` | Partial update; applies live, no reconnect needed |
 | GET | `/v1/events` | Server-Sent Events stream of everything the session does |
 
 ## Errors

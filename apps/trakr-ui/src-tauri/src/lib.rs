@@ -27,19 +27,18 @@ pub fn run() {
                     .unwrap_or_else(|| "127.0.0.1:7011".parse().unwrap());
                 let sim_host = std::env::var("TRAKR_SIM_HOST").unwrap_or_else(|_| "127.0.0.1".into());
                 let sim_port: u16 = std::env::var("TRAKR_SIM_PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(921);
+                let sim = trakr_openconnect::Config { host: sim_host, port: sim_port, ..Default::default() };
                 // Chipping isn't a real hardware mode on any known launch monitor; see
-                // docs/skytrak-protocol/chipping-mode.md for what these control.
-                let force_chip_distance_yd = std::env::var("TRAKR_FORCE_CHIP_DISTANCE_YD").ok().and_then(|s| s.parse().ok());
-                let chip_on_lob_wedge = std::env::var("TRAKR_CHIP_ON_LOB_WEDGE").ok().and_then(|s| s.parse().ok()).unwrap_or(true);
-                let sim = trakr_openconnect::Config {
-                    host: sim_host,
-                    port: sim_port,
-                    force_chip_distance_yd,
-                    chip_on_lob_wedge,
+                // docs/skytrak-protocol/chipping-mode.md. These env vars only seed the
+                // very first run -- after that, settings saved via the UI's gear icon
+                // (POST /v1/settings) persist across restarts and take precedence.
+                let initial_chip_settings = trakr_core::ChipSettings {
+                    chip_on_lob_wedge: std::env::var("TRAKR_CHIP_ON_LOB_WEDGE").ok().and_then(|s| s.parse().ok()).unwrap_or(true),
+                    force_chip_distance_yd: std::env::var("TRAKR_FORCE_CHIP_DISTANCE_YD").ok().and_then(|s| s.parse().ok()),
                     ..Default::default()
                 };
-                tracing::info!(%bind, sim_host = %sim.host, sim_port = sim.port, ?force_chip_distance_yd, chip_on_lob_wedge, "starting embedded trakr daemon");
-                if let Err(e) = trakr_daemon::serve(bind, sim).await {
+                tracing::info!(%bind, sim_host = %sim.host, sim_port = sim.port, ?initial_chip_settings, "starting embedded trakr daemon");
+                if let Err(e) = trakr_daemon::serve(bind, sim, initial_chip_settings).await {
                     tracing::error!(error = %e, "embedded daemon failed to start -- is `trakr serve` already running elsewhere on this port?");
                 }
             });

@@ -235,6 +235,12 @@ impl SkytrakDriver {
                             send(&mut stream, "SYS_CONFIG(mode)", &sys_config(false, self.right_handed, self.hw_putting_bit(), false)).await?;
                             events.send(Event::Status(build_status(armed, self.right_handed, self.mode, &last_status))).ok();
                         }
+                        Some(Command::SetChipViaPutting(via_putting)) => {
+                            self.chip_via_putting = via_putting;
+                            if self.mode == ShotMode::Chipping {
+                                send(&mut stream, "SYS_CONFIG(chip-mapping)", &sys_config(false, self.right_handed, self.hw_putting_bit(), false)).await?;
+                            }
+                        }
                     }
                 }
                 n = read(&mut stream, &mut buf) => {

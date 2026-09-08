@@ -2,10 +2,14 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc, watch, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
-use trakr_core::{Command, DeviceInfo, DeviceStatus, Event, Shot, EVENT_BUS_CAPACITY};
+use trakr_core::{
+    ChipSettings, Command, DeviceInfo, DeviceStatus, Event, Shot, EVENT_BUS_CAPACITY,
+};
+
+use crate::settings;
 
 #[derive(Clone)]
 pub struct AppState(pub Arc<Inner>);
@@ -14,6 +18,11 @@ pub struct Inner {
     pub events: broadcast::Sender<Event>,
     pub session: RwLock<Option<Session>>,
     pub sim: trakr_openconnect::Config,
+    /// Live, persisted chipping settings. `watch` because it's exactly
+    /// "latest value, readable without consuming, updatable from elsewhere" --
+    /// a running session's Open Connect output picks up a change on its very
+    /// next message, no reconnect needed.
+    pub chip_settings: watch::Sender<ChipSettings>,
 }
 
 pub struct Session {
@@ -61,13 +70,56 @@ fn default_kind() -> String {
 }
 
 impl AppState {
-    pub fn new(sim: trakr_openconnect::Config) -> Self {
+    /// `initial_chip_settings` only matters the very first time this runs on
+    /// a machine (no settings file yet); after that, whatever was last saved
+    /// via `update_chip_settings` wins, which is what "persistent" means.
+    pub fn new(sim: trakr_openconnect::Config, initial_chip_settings: ChipSettings) -> Self {
         let (events, _rx) = broadcast::channel(EVENT_BUS_CAPACITY);
+        let chip = settings::load().unwrap_or(initial_chip_settings);
+        let (chip_settings, _chip_rx) = watch::channel(chip);
         Self(Arc::new(Inner {
             events,
             session: RwLock::new(None),
             sim,
+            chip_settings,
         }))
+    }
+
+    pub fn chip_settings(&self) -> ChipSettings {
+        *self.0.chip_settings.borrow()
+    }
+
+    /// Any parameter left `None` is unchanged. `force_chip_distance_yd` is
+    /// `Option<Option<f32>>` so "unchanged" and "explicitly cleared to
+    /// disabled" are distinguishable. Persists to disk and, if a session is
+    /// connected, applies `chip_via_putting` immediately.
+    pub async fn update_chip_settings(
+        &self,
+        chip_on_lob_wedge: Option<bool>,
+        force_chip_distance_yd: Option<Option<f32>>,
+        chip_via_putting: Option<bool>,
+    ) -> ChipSettings {
+        let mut updated = self.chip_settings();
+        if let Some(v) = chip_on_lob_wedge {
+            updated.chip_on_lob_wedge = v;
+        }
+        if let Some(v) = force_chip_distance_yd {
+            updated.force_chip_distance_yd = v;
+        }
+        let hw_mapping_changed = chip_via_putting.is_some_and(|v| v != updated.chip_via_putting);
+        if let Some(v) = chip_via_putting {
+            updated.chip_via_putting = v;
+        }
+        self.0.chip_settings.send_replace(updated);
+        settings::save(&updated);
+        if hw_mapping_changed {
+            // Best-effort: fine if nothing is connected yet, it'll pick up
+            // the setting from chip_settings the next time it connects.
+            let _ = self
+                .send_command(Command::SetChipViaPutting(updated.chip_via_putting))
+                .await;
+        }
+        updated
     }
 
     pub async fn snapshot(&self) -> Option<(DeviceInfo, DeviceStatus, Option<Shot>)> {
@@ -131,7 +183,9 @@ impl AppState {
             }
         }
         let right_handed = req.right_handed.unwrap_or(true);
-        let chip_via_putting = req.chip_via_putting.unwrap_or(true);
+        let chip_via_putting = req
+            .chip_via_putting
+            .unwrap_or_else(|| self.chip_settings().chip_via_putting);
         let driver: Box<dyn trakr_core::LaunchMonitor> = match (req.name, req.address) {
             (Some(name), Some(addr)) => Box::new(
                 trakr_skytrak::SkytrakDriver::connect_to(name, addr)
@@ -158,10 +212,13 @@ impl AppState {
         });
 
         let sim_cfg = self.0.sim.clone();
+        let sim_chip_settings = self.0.chip_settings.subscribe();
         let sim_events = self.0.events.subscribe();
         let sim_commands = commands_tx.clone();
         let sim_task = tokio::spawn(async move {
-            if let Err(e) = trakr_openconnect::run(sim_cfg, sim_events, sim_commands).await {
+            if let Err(e) =
+                trakr_openconnect::run(sim_cfg, sim_chip_settings, sim_events, sim_commands).await
+            {
                 warn!(error = %e, "sim output task ended with error");
             }
         });

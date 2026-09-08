@@ -48,7 +48,39 @@ pub enum Command {
     Disarm,
     SetHandedness(Handedness),
     SetShotMode(ShotMode),
+    /// Which hardware mode `ShotMode::Chipping` arms. See
+    /// docs/skytrak-protocol/chipping-mode.md. No-op on drivers with a real
+    /// native chipping mode.
+    SetChipViaPutting(bool),
     Disconnect,
+}
+
+/// User-configurable chipping behavior, shared by the daemon's settings API,
+/// the Open Connect output (auto-switching from the sim's reported club and
+/// distance to target), and the driver (which hardware mode Chipping arms).
+/// See docs/skytrak-protocol/chipping-mode.md.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ChipSettings {
+    /// Auto-switch to Chipping when the sim reports a lob wedge ("LW").
+    pub chip_on_lob_wedge: bool,
+    /// Auto-switch to Chipping when the sim reports the ball within this
+    /// many yards of the target, overriding club selection entirely.
+    /// `None` disables the distance-based override.
+    pub force_chip_distance_yd: Option<f32>,
+    /// Whether Chipping arms the box's Putting mode (`true`, the vendor
+    /// default) or Normal mode (`false`).
+    pub chip_via_putting: bool,
+}
+
+impl Default for ChipSettings {
+    fn default() -> Self {
+        Self {
+            chip_on_lob_wedge: true,
+            force_chip_distance_yd: None,
+            chip_via_putting: true,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
