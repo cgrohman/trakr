@@ -1,23 +1,30 @@
 # trakr
 
-Launch monitor bridge for golf simulators. Drivers talk to hardware; outputs
-talk to simulators. First driver: a clean-room implementation of the original
-SkyTrak (2014 photometric unit). First output: GSPro Open Connect v1, which is
+Launch monitor bridge for golf simulators. A driver talks to hardware; an
+output talks to a simulator; a daemon in the middle exposes the whole session
+over an HTTP + Server-Sent-Events API so it's driveable by a CLI, an AI
+agent, or a GUI without preferring any one of them.
+
+First driver: a clean-room implementation of the original SkyTrak (2014
+photometric launch monitor). First output: GSPro Open Connect v1, which is
 what Muni Golf Sim, GSPro, and OpenGolfAPI accept.
 
-Runs on Linux (x86_64, aarch64), macOS, and Windows as a single binary. No
-vendor app, no subscription, no Wine.
+Written in Rust so it compiles to a single binary with no vendor app, no
+subscription, and no Wine. Built and tested on macOS (arm64) so far; nothing
+in the code is macOS-specific, but Linux and Windows builds haven't been
+exercised yet.
 
 ## Layout
 
 | Crate | Purpose |
 |---|---|
-| `crates/trakr-core` | `LaunchMonitor` trait, `Shot`/`DeviceStatus` model, event and command bus. Add hardware here. |
-| `crates/trakr-skytrak` | Original SkyTrak driver: discovery, session, packet codec. |
-| `crates/trakr-openconnect` | Open Connect v1 client output with heartbeat, reconnect, and club/handedness feedback. |
-| `crates/trakr` | CLI and daemon. |
-| `research/` | Reverse-engineering workspace, see `research/README.md`. Not shipped. |
-| `docs/` | Protocol notes and architecture decisions. |
+| `crates/trakr-core` | `LaunchMonitor` trait, `Shot`/`DeviceStatus` model, event and command bus. Add new hardware here. |
+| `crates/trakr-skytrak` | Original SkyTrak driver: UDP discovery, TCP connect handshake, packet framing/CRC, arm/disarm, status decoding. |
+| `crates/trakr-openconnect` | GSPro Open Connect v1 client output: heartbeat, reconnect, club/handedness feedback. |
+| `crates/trakr-daemon` | The long-running process: owns one session, serves the HTTP + SSE API. |
+| `crates/trakr` | CLI — a thin, AXI-conventioned (Agent eXperience Interface) client over the daemon's API. |
+| `docs/` | Protocol reverse-engineering notes and the HTTP API reference. |
+| `research/` | Reverse-engineering workspace (decompiles, capture scripts). Not shipped — see `research/README.md`. |
 
 ## Quick start
 
@@ -37,9 +44,37 @@ cargo build --release
 ./target/release/trakr test-shot --host 127.0.0.1 --port 921
 ```
 
-Full HTTP API reference: [docs/api.md](docs/api.md). The API is the source
-of truth — the CLI above and the planned Tauri UI are both thin clients over
-it, so anything either can do, an agent can do with the same HTTP calls.
+Run `trakr <command> --help` for flags and examples on any subcommand.
+
+### Commands
+
+| Command | Purpose |
+|---|---|
+| `serve` | Run the daemon in the foreground |
+| `devices` | Broadcast-discover launch monitors on the network |
+| `connect` | Connect to a device by name+address, or auto-discover |
+| `status` | Show the current session's device and status |
+| `arm` / `disarm` | Arm or disarm the connected device |
+| `mode` | Set shot mode (`normal` \| `putting`) |
+| `hand` | Set player handedness (`right` \| `left`) |
+| `disconnect` | End the current session |
+| `events` | Stream session events (status, shots, errors) live |
+| `test-shot` | Send one synthetic shot straight to a simulator, bypassing the daemon |
+
+Full HTTP API reference: [docs/api.md](docs/api.md), machine-readable at
+`GET /v1/openapi.json` once the daemon is running. The API is the source of
+truth — the CLI above and the planned Tauri UI are both thin clients over it,
+so anything either can do, an agent can do with the same HTTP calls.
+
+## Development
+
+```sh
+cargo build --workspace       # build everything
+cargo test --workspace        # unit tests, including CRC values confirmed
+                               # against a real SkyTrak (see crates/trakr-skytrak)
+cargo clippy --workspace --all-targets
+cargo fmt
+```
 
 ## Status
 
@@ -51,10 +86,12 @@ it, so anything either can do, an agent can do with the same HTTP calls.
 - [x] AXI-conventioned CLI (`trakr devices/connect/status/arm/disarm/mode/hand/events`)
 - [ ] Shot capture: decoding the original SkyTrak's camera images into ball speed/spin/angles (see `docs/skytrak-protocol/shot-data.md`)
 - [ ] Tauri UI on top of the same API
+- [ ] Linux/Windows builds exercised (should work; not yet tested)
 - [ ] Additional drivers
 
 ## Legal
 
 trakr is an independent project. It is not affiliated with SkyTrak, GOLFTEC,
 Rapsodo, GSPro, or Muni Golf Sim. The SkyTrak driver is a clean-room
-implementation for interoperability with hardware the user owns.
+implementation for interoperability with hardware the user owns. MIT
+licensed — see [LICENSE](LICENSE).

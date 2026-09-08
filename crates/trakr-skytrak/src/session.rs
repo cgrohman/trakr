@@ -25,8 +25,8 @@ use trakr_core::{
 use crate::discovery::{discover, DiscoveredBox};
 use crate::wire::{
     arm_packet, cam_config, connection_confirm, disarm_packet, magic_name, parse_params,
-    parse_status, sys_config, Framer, MAGIC_PARAMS, MAGIC_SHOT_HEADER, MAGIC_STATUS, MAGIC_TRIGGER,
-    TCP_PORT, UDP_PORT,
+    parse_status, sys_config, Framer, StatusPacket, MAGIC_PARAMS, MAGIC_SHOT_HEADER, MAGIC_STATUS,
+    MAGIC_TRIGGER, TCP_PORT, UDP_PORT,
 };
 
 pub const KIND: &str = "skytrak";
@@ -180,6 +180,7 @@ impl SkytrakDriver {
         let mut buf = [0u8; 65536];
         let mut first_status = true;
         let mut armed = false;
+        let mut last_status: Option<StatusPacket> = None;
 
         loop {
             tokio::select! {
@@ -187,8 +188,16 @@ impl SkytrakDriver {
                     match cmd {
                         None => return Ok(true),
                         Some(Command::Disconnect) => return Ok(true),
-                        Some(Command::Arm) => send(&mut stream, "ARM", &arm_packet()).await?,
-                        Some(Command::Disarm) => send(&mut stream, "DISARM", &disarm_packet()).await?,
+                        Some(Command::Arm) => {
+                            send(&mut stream, "ARM", &arm_packet()).await?;
+                            armed = true;
+                            events.send(Event::Status(build_status(armed, self.right_handed, self.putting, &last_status))).ok();
+                        }
+                        Some(Command::Disarm) => {
+                            send(&mut stream, "DISARM", &disarm_packet()).await?;
+                            armed = false;
+                            events.send(Event::Status(build_status(armed, self.right_handed, self.putting, &last_status))).ok();
+                        }
                         Some(Command::SetHandedness(h)) => {
                             self.right_handed = matches!(h, Handedness::Right);
                             send(&mut stream, "SYS_CONFIG(hand)", &sys_config(false, self.right_handed, self.putting, false)).await?;
@@ -207,6 +216,7 @@ impl SkytrakDriver {
                         match magic {
                             MAGIC_STATUS => {
                                 let Some(status) = parse_status(&pkt) else { continue };
+                                last_status = Some(status.clone());
                                 events.send(Event::Status(DeviceStatus {
                                     battery_pct: Some(status.battery_pct),
                                     charging: Some(status.charging),
@@ -259,6 +269,34 @@ impl SkytrakDriver {
                 }
             }
         }
+    }
+}
+
+/// Builds a `DeviceStatus` for synthetic updates (arm/disarm commands) using
+/// the last real status packet for fields we don't track locally (battery, rssi).
+fn build_status(
+    armed: bool,
+    right_handed: bool,
+    putting: bool,
+    last: &Option<StatusPacket>,
+) -> DeviceStatus {
+    DeviceStatus {
+        battery_pct: last.as_ref().map(|s| s.battery_pct),
+        charging: last.as_ref().map(|s| s.charging),
+        rssi: last.as_ref().and_then(|s| s.rssi),
+        handedness: Some(if right_handed {
+            Handedness::Right
+        } else {
+            Handedness::Left
+        }),
+        shot_mode: Some(if putting {
+            ShotMode::Putting
+        } else {
+            ShotMode::Normal
+        }),
+        armed,
+        roll_deg: None,
+        tilt_deg: None,
     }
 }
 
