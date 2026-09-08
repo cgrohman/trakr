@@ -68,7 +68,7 @@
     "/v1/session/arm": { "post": { "summary": "Arm the connected launch monitor", "description": "Activates lasers/cameras and puts the device in a waiting-for-shot state.", "responses": { "202": { "description": "Command accepted" }, "404": { "description": "No active session" } } } },
     "/v1/session/disarm": { "post": { "summary": "Disarm the connected launch monitor", "responses": { "202": { "description": "Command accepted" }, "404": { "description": "No active session" } } } },
     "/v1/session/mode": {
-      "post": { "summary": "Set shot mode", "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["normal", "putting"] } }, "required": ["mode"] } } } }, "responses": { "202": { "description": "Command accepted" }, "422": { "description": "Invalid mode" }, "404": { "description": "No active session" } } }
+      "post": { "summary": "Set shot mode", "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["normal", "putting", "chipping"] } }, "required": ["mode"] } } } }, "responses": { "202": { "description": "Command accepted" }, "422": { "description": "Invalid mode" }, "404": { "description": "No active session" } } }
     },
     "/v1/session/hand": {
       "post": { "summary": "Set player handedness", "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "hand": { "type": "string", "enum": ["right", "left"] } }, "required": ["hand"] } } } }, "responses": { "202": { "description": "Command accepted" }, "422": { "description": "Invalid hand" }, "404": { "description": "No active session" } } }

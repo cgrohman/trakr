@@ -3,9 +3,13 @@
 // + SSE API (docs/api.md). No Tauri IPC is used for app logic on purpose.
 const API = "http://127.0.0.1:7011";
 
+let lastDevice = null;
+let lastShot = null;
+
 const $ = (id) => document.getElementById(id);
 
 const el = {
+  inputBroadcast: $("input-broadcast"),
   daemonDot: $("daemon-dot"),
   daemonLabel: $("daemon-label"),
   deviceList: $("device-list"),
@@ -206,25 +210,32 @@ function connectEvents() {
 function handleEvent(kind, data) {
   switch (kind) {
     case "connected":
+      lastDevice = data;
       logEvent("status", `connected: ${data.name ?? ""} (${data.address ?? ""})`);
+      // One fetch here to pick up anything a bare status/shot event can't
+      // carry (e.g. a shot from before this window opened); every
+      // subsequent status/shot update below renders straight from the SSE
+      // payload with no extra round trip.
       refreshStatus();
       break;
     case "disconnected":
+      lastDevice = null;
+      lastShot = null;
       logEvent("status", `disconnected: ${data.reason ?? ""}`);
       showNoSession();
       break;
     case "status":
       logEvent("status", `battery ${data.battery_pct ?? "?"}% · armed ${!!data.armed} · rssi ${data.rssi ?? "?"}`);
-      refreshStatus();
+      renderSession({ device: lastDevice, status: data, last_shot: lastShot });
       break;
     case "ready":
       logEvent("status", "armed and ready");
-      refreshStatus();
       break;
     case "shot_started":
       logEvent("status", "shot detected…");
       break;
     case "shot":
+      lastShot = data;
       logEvent("shot", JSON.stringify(data));
       renderShot(data);
       break;

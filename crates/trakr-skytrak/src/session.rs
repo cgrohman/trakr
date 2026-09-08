@@ -55,7 +55,12 @@ enum Target {
 pub struct SkytrakDriver {
     target: Target,
     right_handed: bool,
-    putting: bool,
+    mode: ShotMode,
+    /// The box has no native chipping mode (see
+    /// docs/skytrak-protocol/chipping-mode.md). When `true` (the vendor
+    /// connector's shipped default), `ShotMode::Chipping` arms the box's
+    /// Putting mode; when `false`, it arms Normal mode instead.
+    chip_via_putting: bool,
 }
 
 impl SkytrakDriver {
@@ -68,7 +73,8 @@ impl SkytrakDriver {
                 address,
             },
             right_handed: true,
-            putting: false,
+            mode: ShotMode::Normal,
+            chip_via_putting: true,
         }
     }
 
@@ -80,13 +86,30 @@ impl SkytrakDriver {
                 window,
             },
             right_handed: true,
-            putting: false,
+            mode: ShotMode::Normal,
+            chip_via_putting: true,
         }
     }
 
     pub fn with_handedness(mut self, right_handed: bool) -> Self {
         self.right_handed = right_handed;
         self
+    }
+
+    /// See `chip_via_putting` field docs.
+    pub fn with_chip_via_putting(mut self, chip_via_putting: bool) -> Self {
+        self.chip_via_putting = chip_via_putting;
+        self
+    }
+
+    /// Whether the box's hardware Putting-mode bit should be set for the
+    /// driver's current logical `ShotMode`.
+    fn hw_putting_bit(&self) -> bool {
+        match self.mode {
+            ShotMode::Normal => false,
+            ShotMode::Putting => true,
+            ShotMode::Chipping => self.chip_via_putting,
+        }
     }
 }
 
@@ -195,21 +218,22 @@ impl SkytrakDriver {
                         Some(Command::Arm) => {
                             send(&mut stream, "ARM", &arm_packet()).await?;
                             armed = true;
-                            events.send(Event::Status(build_status(armed, self.right_handed, self.putting, &last_status))).ok();
+                            events.send(Event::Status(build_status(armed, self.right_handed, self.mode, &last_status))).ok();
                         }
                         Some(Command::Disarm) => {
                             send(&mut stream, "DISARM", &disarm_packet()).await?;
                             armed = false;
-                            events.send(Event::Status(build_status(armed, self.right_handed, self.putting, &last_status))).ok();
+                            events.send(Event::Status(build_status(armed, self.right_handed, self.mode, &last_status))).ok();
                         }
                         Some(Command::SetHandedness(h)) => {
                             self.right_handed = matches!(h, Handedness::Right);
-                            send(&mut stream, "SYS_CONFIG(hand)", &sys_config(false, self.right_handed, self.putting, false)).await?;
+                            send(&mut stream, "SYS_CONFIG(hand)", &sys_config(false, self.right_handed, self.hw_putting_bit(), false)).await?;
                             send(&mut stream, "CAM_CONFIG(hand)", &cam_config(self.right_handed)).await?;
                         }
                         Some(Command::SetShotMode(m)) => {
-                            self.putting = matches!(m, ShotMode::Putting);
-                            send(&mut stream, "SYS_CONFIG(mode)", &sys_config(false, self.right_handed, self.putting, false)).await?;
+                            self.mode = m;
+                            send(&mut stream, "SYS_CONFIG(mode)", &sys_config(false, self.right_handed, self.hw_putting_bit(), false)).await?;
+                            events.send(Event::Status(build_status(armed, self.right_handed, self.mode, &last_status))).ok();
                         }
                     }
                 }
@@ -226,7 +250,7 @@ impl SkytrakDriver {
                                     charging: Some(status.charging),
                                     rssi: status.rssi,
                                     handedness: Some(if status.handedness_right { Handedness::Right } else { Handedness::Left }),
-                                    shot_mode: Some(if self.putting { ShotMode::Putting } else { ShotMode::Normal }),
+                                    shot_mode: Some(self.mode),
                                     armed,
                                     roll_deg: None,
                                     tilt_deg: None,
@@ -234,10 +258,10 @@ impl SkytrakDriver {
                                 if first_status {
                                     first_status = false;
                                     send(&mut stream, "DISARM", &disarm_packet()).await?;
-                                    send(&mut stream, "SYS_CONFIG(initial)", &sys_config(true, self.right_handed, self.putting, false)).await?;
+                                    send(&mut stream, "SYS_CONFIG(initial)", &sys_config(true, self.right_handed, self.hw_putting_bit(), false)).await?;
                                 } else {
                                     match status.code {
-                                        1 => send(&mut stream, "SYS_CONFIG", &sys_config(false, self.right_handed, self.putting, false)).await?,
+                                        1 => send(&mut stream, "SYS_CONFIG", &sys_config(false, self.right_handed, self.hw_putting_bit(), false)).await?,
                                         2 => send(&mut stream, "CAM_CONFIG", &cam_config(self.right_handed)).await?,
                                         3 => send(&mut stream, "ARM", &arm_packet()).await?,
                                         0 if !armed => { armed = true; events.send(Event::Ready).ok(); }
@@ -255,7 +279,7 @@ impl SkytrakDriver {
                                         firmware: Some(format!("{:.4}", params.firmware_version)),
                                     })).ok();
                                 }
-                                send(&mut stream, "SYS_CONFIG(post-params)", &sys_config(false, self.right_handed, self.putting, false)).await?;
+                                send(&mut stream, "SYS_CONFIG(post-params)", &sys_config(false, self.right_handed, self.hw_putting_bit(), false)).await?;
                                 send(&mut stream, "CAM_CONFIG(post-params)", &cam_config(self.right_handed)).await?;
                             }
                             MAGIC_TRIGGER => {
@@ -281,7 +305,7 @@ impl SkytrakDriver {
 fn build_status(
     armed: bool,
     right_handed: bool,
-    putting: bool,
+    mode: ShotMode,
     last: &Option<StatusPacket>,
 ) -> DeviceStatus {
     DeviceStatus {
@@ -293,11 +317,7 @@ fn build_status(
         } else {
             Handedness::Left
         }),
-        shot_mode: Some(if putting {
-            ShotMode::Putting
-        } else {
-            ShotMode::Normal
-        }),
+        shot_mode: Some(mode),
         armed,
         roll_deg: None,
         tilt_deg: None,

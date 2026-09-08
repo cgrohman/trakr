@@ -22,9 +22,21 @@ pub struct Config {
     pub device_id: String,
     pub heartbeat: Duration,
     pub reconnect_delay: Duration,
-    /// Switch the device into putting mode when the sim reports the putter, and
-    /// back to normal for any other club.
-    pub putting_from_club: bool,
+    /// Derive shot mode from the sim's reported club/distance-to-target
+    /// (putter -> Putting, everything else per `force_chip_distance_yd` and
+    /// `chip_on_lob_wedge` below). If false, shot mode is only ever changed
+    /// by an explicit `SetShotMode` command.
+    pub auto_shot_mode: bool,
+    /// Chip mode auto-triggers when the club is a lob wedge (`"LW"`). This is
+    /// the vendor connector's default behaviour. See
+    /// docs/skytrak-protocol/chipping-mode.md.
+    pub chip_on_lob_wedge: bool,
+    /// Chip mode auto-triggers by distance to target instead of club,
+    /// matching the vendor connector's `ForceChipDistanceToTarget` setting.
+    /// `Some(yards)` overrides `chip_on_lob_wedge` entirely: within that
+    /// distance (and not on the putter) is Chipping, beyond it is Normal,
+    /// no matter what club is selected. `None` disables the override.
+    pub force_chip_distance_yd: Option<f32>,
 }
 
 impl Default for Config {
@@ -35,9 +47,35 @@ impl Default for Config {
             device_id: "trakr".into(),
             heartbeat: Duration::from_secs(2),
             reconnect_delay: Duration::from_secs(5),
-            putting_from_club: true,
+            auto_shot_mode: true,
+            chip_on_lob_wedge: true,
+            force_chip_distance_yd: None,
         }
     }
+}
+
+/// Chooses shot mode from the sim's reported club and distance to target,
+/// reproducing the original vendor connector's net behaviour (see
+/// docs/skytrak-protocol/chipping-mode.md): putter always wins; a configured
+/// distance threshold overrides club selection entirely; otherwise a lob
+/// wedge triggers chipping if enabled; everything else is Normal.
+fn resolve_shot_mode(cfg: &Config, club: &str, distance_to_target: Option<f32>) -> ShotMode {
+    if club == "PT" {
+        return ShotMode::Putting;
+    }
+    if let (Some(threshold), Some(dist)) = (cfg.force_chip_distance_yd, distance_to_target) {
+        if threshold > 0.0 {
+            return if dist <= threshold {
+                ShotMode::Chipping
+            } else {
+                ShotMode::Normal
+            };
+        }
+    }
+    if cfg.chip_on_lob_wedge && club == "LW" {
+        return ShotMode::Chipping;
+    }
+    ShotMode::Normal
 }
 
 /// Run the output until the event bus closes. Reconnects to the sim forever.
@@ -143,13 +181,9 @@ async fn handle_response(cfg: &Config, resp: &Response, commands: &mpsc::Sender<
                 }
                 _ => {}
             }
-            if cfg.putting_from_club {
+            if cfg.auto_shot_mode {
                 if let Some(club) = &p.club {
-                    let mode = if club == "PT" {
-                        ShotMode::Putting
-                    } else {
-                        ShotMode::Normal
-                    };
+                    let mode = resolve_shot_mode(cfg, club, p.distance_to_target);
                     let _ = commands.send(Command::SetShotMode(mode)).await;
                 }
             }
@@ -180,5 +214,67 @@ impl Request {
                 is_heart_beat: Some(true),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(chip_on_lob_wedge: bool, force_chip_distance_yd: Option<f32>) -> Config {
+        Config {
+            chip_on_lob_wedge,
+            force_chip_distance_yd,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn putter_always_wins() {
+        let c = cfg(true, Some(20.0));
+        assert_eq!(resolve_shot_mode(&c, "PT", Some(5.0)), ShotMode::Putting);
+        let c = cfg(false, None);
+        assert_eq!(resolve_shot_mode(&c, "PT", None), ShotMode::Putting);
+    }
+
+    #[test]
+    fn lob_wedge_triggers_chipping_by_default() {
+        let c = cfg(true, None);
+        assert_eq!(resolve_shot_mode(&c, "LW", None), ShotMode::Chipping);
+        assert_eq!(resolve_shot_mode(&c, "DR", None), ShotMode::Normal);
+    }
+
+    #[test]
+    fn lob_wedge_chipping_can_be_disabled() {
+        let c = cfg(false, None);
+        assert_eq!(resolve_shot_mode(&c, "LW", None), ShotMode::Normal);
+    }
+
+    #[test]
+    fn distance_threshold_overrides_club_selection_entirely() {
+        // Matches the vendor connector's ForceChipDistanceToTarget: distance
+        // decides, even for a driver, and a lob wedge outside the range does
+        // NOT chip just because it's a lob wedge.
+        let c = cfg(true, Some(20.0));
+        assert_eq!(resolve_shot_mode(&c, "DR", Some(15.0)), ShotMode::Chipping);
+        assert_eq!(resolve_shot_mode(&c, "LW", Some(25.0)), ShotMode::Normal);
+        assert_eq!(resolve_shot_mode(&c, "9I", Some(20.0)), ShotMode::Chipping);
+        // exactly at threshold
+    }
+
+    #[test]
+    fn zero_distance_threshold_means_disabled() {
+        // Config::force_chip_distance_yd: Some(0.0) behaves like None, matching
+        // the vendor's "0 = off" convention for ForceChipDistanceToTarget.
+        let c = cfg(true, Some(0.0));
+        assert_eq!(resolve_shot_mode(&c, "LW", Some(1.0)), ShotMode::Chipping); // falls through to lob-wedge rule
+        assert_eq!(resolve_shot_mode(&c, "DR", Some(1.0)), ShotMode::Normal);
+    }
+
+    #[test]
+    fn missing_distance_falls_back_to_club_rule() {
+        let c = cfg(true, Some(20.0));
+        assert_eq!(resolve_shot_mode(&c, "LW", None), ShotMode::Chipping);
+        assert_eq!(resolve_shot_mode(&c, "DR", None), ShotMode::Normal);
     }
 }

@@ -38,6 +38,9 @@ enum Cmd {
     #[command(
         after_help = "Examples:\n  trakr serve                                    # sim on this machine, default port 921\n  trakr serve --sim-host 192.168.1.50 --sim-port 921\n  RUST_LOG=debug trakr serve                     # verbose wire-level logs on stderr"
     )]
+    #[command(
+        after_help = "Examples:\n  trakr serve\n  trakr serve --force-chip-distance-yd 20        # auto-switch to chipping within 20 yards of the pin\n  trakr serve --no-chip-on-lob-wedge              # only distance triggers chipping, never club selection"
+    )]
     Serve {
         /// Address the HTTP + SSE API listens on.
         #[arg(long, default_value = "127.0.0.1:7011")]
@@ -48,6 +51,16 @@ enum Cmd {
         /// Simulator's Open Connect port.
         #[arg(long, default_value_t = 921)]
         sim_port: u16,
+        /// Auto-switch to Chipping mode when the sim reports the ball within
+        /// this many yards of the target, overriding club selection entirely.
+        /// Matches the vendor connector's ForceChipDistanceToTarget. Off by
+        /// default -- see docs/skytrak-protocol/chipping-mode.md.
+        #[arg(long)]
+        force_chip_distance_yd: Option<f32>,
+        /// Disable auto-switching to Chipping mode when the sim reports a
+        /// lob wedge ("LW") selected. On by default.
+        #[arg(long)]
+        no_chip_on_lob_wedge: bool,
     },
     /// Discover launch monitors on the network.
     #[command(
@@ -76,6 +89,10 @@ enum Cmd {
         /// Player handedness to configure on connect.
         #[arg(long, value_parser = ["right", "left"])]
         hand: Option<String>,
+        /// Arm hardware Normal mode for Chipping instead of the default
+        /// Putting mode. See docs/skytrak-protocol/chipping-mode.md.
+        #[arg(long)]
+        chip_via_normal: bool,
     },
     /// Show the current session's device and status.
     Status,
@@ -83,9 +100,11 @@ enum Cmd {
     Arm,
     /// Disarm the connected launch monitor.
     Disarm,
-    /// Set shot mode.
+    /// Set shot mode. "chipping" isn't a real hardware mode on any known
+    /// launch monitor -- it maps to whichever native mode reads a chip shot
+    /// best (see docs/skytrak-protocol/chipping-mode.md).
     Mode {
-        #[arg(value_parser = ["normal", "putting"])]
+        #[arg(value_parser = ["normal", "putting", "chipping"])]
         mode: String,
     },
     /// Set player handedness.
@@ -144,10 +163,14 @@ async fn main() -> Result<()> {
             bind,
             sim_host,
             sim_port,
+            force_chip_distance_yd,
+            no_chip_on_lob_wedge,
         }) => {
             let sim = trakr_openconnect::Config {
                 host: sim_host,
                 port: sim_port,
+                force_chip_distance_yd,
+                chip_on_lob_wedge: !no_chip_on_lob_wedge,
                 ..Default::default()
             };
             trakr_daemon::serve(bind, sim).await?;
@@ -161,7 +184,8 @@ async fn main() -> Result<()> {
             name,
             address,
             hand,
-        }) => connect(&client, &cli.daemon, name, address, hand).await?,
+            chip_via_normal,
+        }) => connect(&client, &cli.daemon, name, address, hand, chip_via_normal).await?,
         Some(Cmd::Status) => status(&client, &cli.daemon).await?,
         Some(Cmd::Arm) => simple_post(&client, &cli.daemon, "/v1/session/arm", None).await?,
         Some(Cmd::Disarm) => simple_post(&client, &cli.daemon, "/v1/session/disarm", None).await?,
@@ -310,6 +334,7 @@ async fn connect(
     name: Option<String>,
     address: Option<String>,
     hand: Option<String>,
+    chip_via_normal: bool,
 ) -> Result<i32> {
     let mut body = serde_json::Map::new();
     if let Some(n) = name {
@@ -320,6 +345,9 @@ async fn connect(
     }
     if let Some(h) = hand {
         body.insert("right_handed".into(), Value::Bool(h == "right"));
+    }
+    if chip_via_normal {
+        body.insert("chip_via_putting".into(), Value::Bool(false));
     }
     let resp = client
         .post(format!("{daemon}/v1/session"))
