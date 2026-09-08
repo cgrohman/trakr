@@ -35,7 +35,9 @@ pub enum Event {
     Misread {
         reason: String,
     },
-    Error(String),
+    Error {
+        message: String,
+    },
 }
 
 /// Everything an output can ask a driver to do.

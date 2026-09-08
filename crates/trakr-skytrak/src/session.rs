@@ -117,7 +117,11 @@ impl LaunchMonitor for SkytrakDriver {
                 Ok(true) => return Ok(()), // Command::Disconnect
                 Ok(false) => {}            // link dropped; loop and reconnect
                 Err(e) => {
-                    events.send(Event::Error(e.to_string())).ok();
+                    events
+                        .send(Event::Error {
+                            message: e.to_string(),
+                        })
+                        .ok();
                 }
             }
             events

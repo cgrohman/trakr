@@ -10,6 +10,7 @@ use axum::{Json, Router};
 use serde_json::json;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
+use tower_http::cors::{Any, CorsLayer};
 use trakr_core::{Command, Handedness, ShotMode};
 
 use crate::state::{AppState, ConnectRequest};
@@ -28,6 +29,12 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/session/mode", post(set_mode))
         .route("/v1/session/hand", post(set_hand))
         .route("/v1/events", get(events))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
         .with_state(state)
 }
 
@@ -190,7 +197,7 @@ fn event_type(ev: &trakr_core::Event) -> &'static str {
         trakr_core::Event::ShotStarted => "shot_started",
         trakr_core::Event::Shot(_) => "shot",
         trakr_core::Event::Misread { .. } => "misread",
-        trakr_core::Event::Error(_) => "error",
+        trakr_core::Event::Error { .. } => "error",
     }
 }
 
