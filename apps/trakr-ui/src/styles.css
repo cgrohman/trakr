@@ -156,9 +156,17 @@ select {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0; /* let grid items shrink below their content's intrinsic width */
 }
+.stat-wide { grid-column: span 2; }
 .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
-.stat-value { font-size: 18px; font-weight: 600; font-family: var(--mono); }
+.stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .stat-value.armed-true { color: var(--green); }
 .stat-value.armed-false { color: var(--text-dim); }
 
