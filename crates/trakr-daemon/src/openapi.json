@@ -16,10 +16,10 @@
     "/v1/devices": {
       "get": {
         "summary": "Discover launch monitors on the network",
-        "description": "Broadcasts a discovery request and collects replies for `window_ms`. Does not require or affect an active session.",
+        "description": "Broadcasts a discovery request on every active local network interface (WiFi or wired) automatically and collects replies for `window_ms`. Does not require or affect an active session.",
         "parameters": [
           { "name": "window_ms", "in": "query", "schema": { "type": "integer", "default": 3000 } },
-          { "name": "broadcast", "in": "query", "description": "Directed broadcast address(es), e.g. 192.168.7.255 for a /22. Repeat the param for multiple. Defaults to the global broadcast address.", "schema": { "type": "array", "items": { "type": "string" } } }
+          { "name": "broadcast", "in": "query", "description": "Comma-separated extra directed broadcast address(es) to scan, beyond the ones auto-detected from this host's own network interfaces. Only needed for a network this host isn't itself on.", "schema": { "type": "string" } }
         ],
         "responses": { "200": { "description": "Devices found", "content": { "application/json": { "example": { "devices": [{ "kind": "skytrak", "name": "SKYTRAK_C47F51902EE3", "address": "192.168.4.61", "direct_mode": false }], "count": 1 } } } } }
       }
@@ -42,7 +42,7 @@
                 "kind": { "type": "string", "default": "skytrak", "enum": ["skytrak"] },
                 "name": { "type": "string", "description": "Box name from GET /v1/devices. Omit with address to auto-discover the first box found." },
                 "address": { "type": "string", "description": "Box IPv4 address. Required together with name." },
-                "broadcast": { "type": "array", "items": { "type": "string" }, "description": "Directed broadcast address(es) to use if discovering." },
+                "broadcast": { "type": "array", "items": { "type": "string" }, "description": "Extra directed broadcast address(es) to scan if auto-discovering, beyond this host's own network interfaces." },
                 "right_handed": { "type": "boolean", "default": true }
               } },
               "examples": {
