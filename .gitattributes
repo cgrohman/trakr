@@ -1,0 +1,8 @@
+# Normalize line endings so `cargo fmt --check` and friends don't fail on
+# Windows CI runners purely because git checked files out with CRLF.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary
+*.svg text eol=lf
