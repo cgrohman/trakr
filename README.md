@@ -63,8 +63,44 @@ Run `trakr <command> --help` for flags and examples on any subcommand.
 
 Full HTTP API reference: [docs/api.md](docs/api.md), machine-readable at
 `GET /v1/openapi.json` once the daemon is running. The API is the source of
-truth — the CLI above and the planned Tauri UI are both thin clients over it,
-so anything either can do, an agent can do with the same HTTP calls.
+truth — the CLI above and the Tauri desktop app (`apps/trakr-ui`) are both
+thin clients over it, so anything either can do, an agent can do with the
+same HTTP calls.
+
+## Connecting to Muni Golf Sim
+
+Muni doesn't talk to launch monitors from the game itself — a bundled
+companion app, **Launch Monitor Connect**, does, and it ships for both
+Windows and Linux. Its "SkyTrak / SkyTrak+" and "Open Connect API" device
+modes are the same code path: a plain GSPro Open Connect v1 listener,
+default port `921`, that accepts connections from any machine on the
+network, not just its own. That's exactly the protocol `trakr-openconnect`
+already speaks as a client, so there's nothing to configure on trakr's side
+beyond pointing it at the right address.
+
+Both `trakr serve` and the desktop app already default to `127.0.0.1:921`,
+and the connection to Muni starts automatically the instant you connect to a
+launch monitor — there's no separate step. In practice:
+
+1. Launch Muni's game and its Launch Monitor Connect app.
+2. In Launch Monitor Connect's device dropdown, pick **SkyTrak / SkyTrak+**
+   or **Open Connect API** (either works identically) and note the port it
+   shows (`921` by default).
+3. If Muni is running on a different machine than trakr, use that machine's
+   LAN address: `trakr serve --sim-host <address> --sim-port 921` (or
+   `TRAKR_SIM_HOST`/`TRAKR_SIM_PORT` for the desktop app).
+4. Connect trakr to your launch monitor as usual — `trakr connect`, the API,
+   or the desktop app. Muni picks it up with no further action.
+
+Prove the link before touching hardware:
+
+```sh
+trakr test-shot --host <address> --port 921
+```
+
+This works today for heartbeat, ready state, arming, and handedness/club
+feedback from Muni. Real ball strikes won't produce real numbers in Muni yet
+— see the shot capture gap in Status below.
 
 ## Development
 
@@ -84,8 +120,8 @@ cargo fmt
 - [x] SkyTrak driver: discovery, connect handshake, arm/disarm, status — confirmed against real hardware
 - [x] `trakr serve` daemon with HTTP + SSE API (`docs/api.md`, `GET /v1/openapi.json`)
 - [x] AXI-conventioned CLI (`trakr devices/connect/status/arm/disarm/mode/hand/events`)
+- [x] Tauri desktop app (`apps/trakr-ui`) with a live, persistent Settings panel
 - [ ] Shot capture: decoding the original SkyTrak's camera images into ball speed/spin/angles (see `docs/skytrak-protocol/shot-data.md`)
-- [ ] Tauri UI on top of the same API
 - [ ] Linux/Windows builds exercised (should work; not yet tested)
 - [ ] Additional drivers
 
