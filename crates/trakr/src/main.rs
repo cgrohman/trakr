@@ -106,6 +106,7 @@ enum Cmd {
     },
     /// Send one synthetic shot straight to a simulator, bypassing the daemon.
     /// Useful for proving a simulator link works before hardware is involved.
+    #[command(allow_negative_numbers = true)]
     TestShot {
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
