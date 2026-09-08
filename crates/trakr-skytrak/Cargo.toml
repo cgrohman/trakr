@@ -13,3 +13,6 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 bytes = { workspace = true }
 crc = { workspace = true }
+
+[dev-dependencies]
+hex = "0.4"

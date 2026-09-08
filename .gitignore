@@ -30,3 +30,4 @@ research/GSPro4OSP/
 !/tools/ghidra_scripts/
 /.playwright-mcp/
 .DS_Store
+research/oracle/*.sqlite-journal

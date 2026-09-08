@@ -115,7 +115,11 @@ impl Request {
                 side_spin: ball.side_spin_rpm.map(|v| v.round() as f64),
                 hla: round1(ball.horizontal_angle_deg),
                 vla: round1(ball.launch_angle_deg),
-                carry_distance: shot.flight.as_ref().and_then(|f| f.carry_m).map(|m| round1(m * 1.093_613)),
+                carry_distance: shot
+                    .flight
+                    .as_ref()
+                    .and_then(|f| f.carry_m)
+                    .map(|m| round1(m * 1.093_613)),
             }),
             shot_data_options: ShotDataOptions {
                 contains_ball_data: true,
@@ -144,17 +148,30 @@ pub fn drain_responses(acc: &mut Vec<u8>) -> Vec<Response> {
     let mut esc = false;
     for (i, &b) in acc.iter().enumerate() {
         if in_str {
-            if esc { esc = false; } else if b == b'\\' { esc = true; } else if b == b'"' { in_str = false; }
+            if esc {
+                esc = false;
+            } else if b == b'\\' {
+                esc = true;
+            } else if b == b'"' {
+                in_str = false;
+            }
             continue;
         }
         match b {
             b'"' => in_str = true,
-            b'{' => { if depth == 0 { start = Some(i); } depth += 1; }
+            b'{' => {
+                if depth == 0 {
+                    start = Some(i);
+                }
+                depth += 1;
+            }
             b'}' => {
                 depth -= 1;
                 if depth == 0 {
                     if let Some(s) = start.take() {
-                        if let Ok(r) = serde_json::from_slice::<Response>(&acc[s..=i]) { out.push(r); }
+                        if let Ok(r) = serde_json::from_slice::<Response>(&acc[s..=i]) {
+                            out.push(r);
+                        }
                         consumed = i + 1;
                     }
                 }
@@ -183,8 +200,17 @@ mod tests {
     fn shot_request_matches_spec_shape() {
         let shot = Shot {
             sequence: 1,
-            ball: trakr_core::BallData { speed_mps: 65.9, launch_angle_deg: 14.3, horizontal_angle_deg: 2.3, total_spin_rpm: Some(3250.0), spin_axis_deg: Some(-13.2), ..Default::default() },
-            club: None, flight: None, valid: true,
+            ball: trakr_core::BallData {
+                speed_mps: 65.9,
+                launch_angle_deg: 14.3,
+                horizontal_angle_deg: 2.3,
+                total_spin_rpm: Some(3250.0),
+                spin_axis_deg: Some(-13.2),
+                ..Default::default()
+            },
+            club: None,
+            flight: None,
+            valid: true,
         };
         let req = Request::from_shot("trakr", 13, &shot);
         let v: serde_json::Value = serde_json::to_value(&req).unwrap();

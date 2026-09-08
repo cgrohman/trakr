@@ -1,0 +1,85 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "trakr",
+    "version": "0.1.0",
+    "description": "Launch monitor bridge for golf simulators. Discover a launch monitor, connect, arm it, and stream shot events. This same API backs the trakr CLI and the trakr Tauri UI, so anything the UI can do, an agent can do by calling this API directly."
+  },
+  "servers": [{ "url": "http://127.0.0.1:7011" }],
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "summary": "Liveness check",
+        "responses": { "200": { "description": "Daemon is up", "content": { "application/json": { "example": { "status": "ok", "version": "0.1.0" } } } } }
+      }
+    },
+    "/v1/devices": {
+      "get": {
+        "summary": "Discover launch monitors on the network",
+        "description": "Broadcasts a discovery request and collects replies for `window_ms`. Does not require or affect an active session.",
+        "parameters": [
+          { "name": "window_ms", "in": "query", "schema": { "type": "integer", "default": 3000 } },
+          { "name": "broadcast", "in": "query", "description": "Directed broadcast address(es), e.g. 192.168.7.255 for a /22. Repeat the param for multiple. Defaults to the global broadcast address.", "schema": { "type": "array", "items": { "type": "string" } } }
+        ],
+        "responses": { "200": { "description": "Devices found", "content": { "application/json": { "example": { "devices": [{ "kind": "skytrak", "name": "SKYTRAK_C47F51902EE3", "address": "192.168.4.61", "direct_mode": false }], "count": 1 } } } } }
+      }
+    },
+    "/v1/session": {
+      "get": {
+        "summary": "Current session status",
+        "responses": {
+          "200": { "description": "A session is active", "content": { "application/json": { "example": { "device": { "kind": "skytrak", "name": "SKYTRAK_C47F51902EE3", "address": "192.168.4.61", "connection": "wifi_network", "firmware": "1.7000" }, "status": { "battery_pct": 95.0, "armed": true, "shot_mode": "normal", "handedness": "right" }, "last_shot": null } } } },
+          "404": { "description": "No active session", "content": { "application/json": { "example": { "error": "no_session", "help": "no launch monitor is connected. POST /v1/session to connect" } } } }
+        }
+      },
+      "post": {
+        "summary": "Connect to a launch monitor",
+        "description": "Idempotent: calling this again for the same device is a no-op. Connecting to a second device while one is active returns 409 — call DELETE /v1/session first.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "properties": {
+                "kind": { "type": "string", "default": "skytrak", "enum": ["skytrak"] },
+                "name": { "type": "string", "description": "Box name from GET /v1/devices. Omit with address to auto-discover the first box found." },
+                "address": { "type": "string", "description": "Box IPv4 address. Required together with name." },
+                "broadcast": { "type": "array", "items": { "type": "string" }, "description": "Directed broadcast address(es) to use if discovering." },
+                "right_handed": { "type": "boolean", "default": true }
+              } },
+              "examples": {
+                "known device": { "value": { "name": "SKYTRAK_C47F51902EE3", "address": "192.168.4.61" } },
+                "auto-discover": { "value": {} }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": { "description": "Connecting; poll GET /v1/session or stream GET /v1/events" },
+          "200": { "description": "Already connected to this device (no-op)" },
+          "409": { "description": "A different session is already active" },
+          "422": { "description": "Invalid request body" }
+        }
+      },
+      "delete": {
+        "summary": "Disconnect the current session",
+        "description": "Idempotent: returns 200 even if no session was active.",
+        "responses": { "200": { "description": "Disconnected (or was already disconnected)" } }
+      }
+    },
+    "/v1/session/arm": { "post": { "summary": "Arm the connected launch monitor", "description": "Activates lasers/cameras and puts the device in a waiting-for-shot state.", "responses": { "202": { "description": "Command accepted" }, "404": { "description": "No active session" } } } },
+    "/v1/session/disarm": { "post": { "summary": "Disarm the connected launch monitor", "responses": { "202": { "description": "Command accepted" }, "404": { "description": "No active session" } } } },
+    "/v1/session/mode": {
+      "post": { "summary": "Set shot mode", "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "mode": { "type": "string", "enum": ["normal", "putting"] } }, "required": ["mode"] } } } }, "responses": { "202": { "description": "Command accepted" }, "422": { "description": "Invalid mode" }, "404": { "description": "No active session" } } }
+    },
+    "/v1/session/hand": {
+      "post": { "summary": "Set player handedness", "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "hand": { "type": "string", "enum": ["right", "left"] } }, "required": ["hand"] } } } }, "responses": { "202": { "description": "Command accepted" }, "422": { "description": "Invalid hand" }, "404": { "description": "No active session" } } }
+    },
+    "/v1/events": {
+      "get": {
+        "summary": "Stream session events (Server-Sent Events)",
+        "description": "text/event-stream. Each event's `event:` line is one of discovered, connected, disconnected, status, ready, shot_started, shot, misread, error; `data:` is the JSON-serialized trakr_core::Event with a matching \"type\" field. Consume with `curl -N http://127.0.0.1:7011/v1/events` or any SSE/EventSource client.",
+        "responses": { "200": { "description": "SSE stream", "content": { "text/event-stream": {} } } }
+      }
+    },
+    "/v1/openapi.json": { "get": { "summary": "This document", "responses": { "200": { "description": "OpenAPI 3.0 JSON" } } } }
+  }
+}

@@ -73,8 +73,12 @@ int main(int argc, char **argv) {
   RIPEVersion v={0}; STSWGetVersion(&v); jlog("info","\"stsw_version\":\"%.0f.%.0f\",\"sizeof_shot\":%zu", v.major, v.minor, sizeof(STSWShot));
   void *h = NULL; STSWAbstLogger lg = { NULL, logcb };
   char cache[MAX_PATH]; GetCurrentDirectoryA(MAX_PATH, cache); strcat(cache, "\\probe_cache.sqlite");
-  STSWInit init = { 0, 1, NULL, offline ? -1 : 1, 0, cache, 2 };
-  RIPEErr e = STSWInitEx(&h, &init, &lg);
+  /* The native init struct is ~0x8b0 bytes; the managed wrapper only declared the first 7 fields.
+   * Give the SDK a zeroed page so undeclared fields read as 0/NULL. */
+  unsigned char initbuf[4096]; memset(initbuf, 0, sizeof initbuf);
+  STSWInit init = { 0, 1, NULL, offline ? -1 : 1, 0, NULL, 2 };
+  memcpy(initbuf, &init, sizeof init);
+  RIPEErr e = STSWInitEx(&h, (STSWInit *)initbuf, &lg);
   if (e) { jlog("error","\"where\":\"STSWInitEx\",\"code\":%d", e); return 3; }
   RIPEVersion rv={0}; STSWGetRIPEVersion(h, &rv); jlog("info","\"ripe_sdk_version\":\"%.0f.%.0f\"", rv.major, rv.minor);
   STSWSetBoxMMSReadMode(h, 0);
