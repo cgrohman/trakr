@@ -1,0 +1,75 @@
+name: Release desktop app
+
+# Publishes a tagged, signed release of trakr-ui with updater artifacts.
+#
+# Trigger: push a version tag, e.g.
+#   git tag v0.1.0 && git push origin v0.1.0
+# (bump the version in apps/trakr-ui/src-tauri/tauri.conf.json,
+# apps/trakr-ui/src-tauri/Cargo.toml, and apps/trakr-ui/package.json to match
+# before tagging -- tauri-action does not do this for you.)
+#
+# tauri-action builds .deb/.AppImage (Linux) and .msi/.exe (Windows), signs
+# them with TAURI_SIGNING_PRIVATE_KEY, and publishes them plus a
+# `latest.json` update manifest to a GitHub Release named after the tag. The
+# in-app updater (tauri-plugin-updater, see tauri.conf.json `plugins.updater`)
+# polls that manifest at
+# https://github.com/cgrohman/trakr/releases/latest/download/latest.json.
+#
+# See .github/workflows/tauri-build.yml for the unsigned "build only" CI
+# check that runs on every push to main.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            args: ''
+          - platform: windows-latest
+            args: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+
+      - name: install system dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: install frontend dependencies
+        working-directory: apps/trakr-ui
+        run: npm ci
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/trakr-ui
+          tagName: ${{ github.ref_name }}
+          releaseName: 'trakr ${{ github.ref_name }}'
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
