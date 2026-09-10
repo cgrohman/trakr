@@ -6,10 +6,11 @@ use tokio::sync::{broadcast, mpsc, watch, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 use trakr_core::{
-    ChipSettings, Command, DeviceInfo, DeviceStatus, Event, Shot, EVENT_BUS_CAPACITY,
+    ChipSettings, ClubCarry, Command, DeviceInfo, DeviceStatus, Event, Player, Shot,
+    EVENT_BUS_CAPACITY,
 };
 
-use crate::settings;
+use crate::{player_store, settings};
 
 #[derive(Clone)]
 pub struct AppState(pub Arc<Inner>);
@@ -23,6 +24,10 @@ pub struct Inner {
     /// a running session's Open Connect output picks up a change on its very
     /// next message, no reconnect needed.
     pub chip_settings: watch::Sender<ChipSettings>,
+    /// Persisted player roster. Reference data (see `trakr_core::player`):
+    /// `POST /v1/session/shot` reads it to turn a club into plausible ball
+    /// data, nothing else in the daemon depends on it.
+    pub players: RwLock<Vec<Player>>,
 }
 
 pub struct Session {
@@ -45,11 +50,14 @@ impl Drop for Session {
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct ConnectRequest {
-    /// Currently only "skytrak" is supported.
+    /// "skytrak" (real hardware, default) or "simulated" (a fake device for
+    /// exercising the daemon/UI without hardware -- see `POST /v1/session/shot`).
     #[serde(default = "default_kind")]
     pub kind: String,
     /// Connect to a specific box by name (as returned by `GET /v1/devices`).
-    /// If omitted along with `address`, connects to the first box discovery finds.
+    /// If omitted along with `address`, connects to the first box discovery
+    /// finds. For `kind: "simulated"`, this is just the display name (address
+    /// is ignored); defaults to "Simulated Launch Monitor".
     pub name: Option<String>,
     pub address: Option<Ipv4Addr>,
     /// Directed broadcast addresses to try when discovering (e.g. `192.168.7.255`
@@ -82,6 +90,7 @@ impl AppState {
             session: RwLock::new(None),
             sim,
             chip_settings,
+            players: RwLock::new(player_store::load()),
         }))
     }
 
@@ -173,7 +182,7 @@ impl AppState {
     }
 
     pub async fn connect(&self, req: ConnectRequest) -> Result<(), &'static str> {
-        if req.kind != "skytrak" {
+        if req.kind != "skytrak" && req.kind != "simulated" {
             return Err("unsupported_kind");
         }
         {
@@ -186,21 +195,33 @@ impl AppState {
         let chip_via_putting = req
             .chip_via_putting
             .unwrap_or_else(|| self.chip_settings().chip_via_putting);
-        let driver: Box<dyn trakr_core::LaunchMonitor> = match (req.name, req.address) {
-            (Some(name), Some(addr)) => Box::new(
-                trakr_skytrak::SkytrakDriver::connect_to(name, addr)
+        let driver: Box<dyn trakr_core::LaunchMonitor> = if req.kind == "simulated" {
+            Box::new(
+                trakr_core::simulated::SimulatedDriver::new(
+                    req.name
+                        .unwrap_or_else(|| "Simulated Launch Monitor".into()),
+                )
+                .with_handedness(right_handed),
+            )
+        } else {
+            match (req.name, req.address) {
+                (Some(name), Some(addr)) => Box::new(
+                    trakr_skytrak::SkytrakDriver::connect_to(name, addr)
+                        .with_handedness(right_handed)
+                        .with_chip_via_putting(chip_via_putting),
+                ),
+                (Some(_), None) | (None, Some(_)) => {
+                    return Err("name_and_address_required_together")
+                }
+                (None, None) => Box::new(
+                    trakr_skytrak::SkytrakDriver::discover_and_connect(
+                        req.broadcast,
+                        Duration::from_secs(3),
+                    )
                     .with_handedness(right_handed)
                     .with_chip_via_putting(chip_via_putting),
-            ),
-            (Some(_), None) | (None, Some(_)) => return Err("name_and_address_required_together"),
-            (None, None) => Box::new(
-                trakr_skytrak::SkytrakDriver::discover_and_connect(
-                    req.broadcast,
-                    Duration::from_secs(3),
-                )
-                .with_handedness(right_handed)
-                .with_chip_via_putting(chip_via_putting),
-            ),
+                ),
+            }
         };
 
         let (commands_tx, commands_rx) = mpsc::channel(16);
@@ -243,6 +264,91 @@ impl AppState {
         });
         info!("session started");
         Ok(())
+    }
+
+    pub async fn list_players(&self) -> Vec<Player> {
+        self.0.players.read().await.clone()
+    }
+
+    pub async fn get_player(&self, name: &str) -> Option<Player> {
+        self.0
+            .players
+            .read()
+            .await
+            .iter()
+            .find(|p| p.name.eq_ignore_ascii_case(name))
+            .cloned()
+    }
+
+    pub async fn create_player(
+        &self,
+        name: String,
+        right_handed: bool,
+    ) -> Result<Player, &'static str> {
+        let mut guard = self.0.players.write().await;
+        if guard.iter().any(|p| p.name.eq_ignore_ascii_case(&name)) {
+            return Err("player_exists");
+        }
+        let player = Player {
+            name,
+            right_handed,
+            bag: Vec::new(),
+        };
+        guard.push(player.clone());
+        player_store::save(guard.as_slice());
+        Ok(player)
+    }
+
+    /// Idempotent: `true` if a player was actually removed.
+    pub async fn delete_player(&self, name: &str) -> bool {
+        let mut guard = self.0.players.write().await;
+        let before = guard.len();
+        guard.retain(|p| !p.name.eq_ignore_ascii_case(name));
+        let removed = guard.len() != before;
+        if removed {
+            player_store::save(guard.as_slice());
+        }
+        removed
+    }
+
+    /// Upserts one club's carry distance in `name`'s bag.
+    pub async fn set_club_carry(
+        &self,
+        name: &str,
+        club: &str,
+        carry_yd: f32,
+    ) -> Result<Player, &'static str> {
+        let mut guard = self.0.players.write().await;
+        let Some(player) = guard.iter_mut().find(|p| p.name.eq_ignore_ascii_case(name)) else {
+            return Err("no_such_player");
+        };
+        if let Some(entry) = player
+            .bag
+            .iter_mut()
+            .find(|c| c.club.eq_ignore_ascii_case(club))
+        {
+            entry.carry_yd = carry_yd;
+        } else {
+            player.bag.push(ClubCarry {
+                club: club.to_string(),
+                carry_yd,
+            });
+        }
+        let updated = player.clone();
+        player_store::save(guard.as_slice());
+        Ok(updated)
+    }
+
+    /// Idempotent: removing a club that isn't in the bag is not an error.
+    pub async fn remove_club(&self, name: &str, club: &str) -> Result<Player, &'static str> {
+        let mut guard = self.0.players.write().await;
+        let Some(player) = guard.iter_mut().find(|p| p.name.eq_ignore_ascii_case(name)) else {
+            return Err("no_such_player");
+        };
+        player.bag.retain(|c| !c.club.eq_ignore_ascii_case(club));
+        let updated = player.clone();
+        player_store::save(guard.as_slice());
+        Ok(updated)
     }
 
     async fn apply(&self, ev: Event) {

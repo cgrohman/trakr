@@ -75,15 +75,21 @@ enum Cmd {
     /// Connect to a launch monitor. With no flags, discovers and connects to
     /// the first one found.
     #[command(
-        after_help = "Examples:\n  trakr connect                                        # discover and connect to the first box found\n  trakr connect --name SKYTRAK_C47F51902EE3 --address 192.168.4.61\n  trakr connect --hand left"
+        after_help = "Examples:\n  trakr connect                                        # discover and connect to the first box found\n  trakr connect --name SKYTRAK_C47F51902EE3 --address 192.168.4.61\n  trakr connect --hand left\n  trakr connect --simulate                            # fake device, no hardware -- see `trakr shot`"
     )]
     Connect {
         /// Box name from `trakr devices`. Requires --address.
-        #[arg(long, requires = "address")]
+        #[arg(long, requires = "address", conflicts_with = "simulate")]
         name: Option<String>,
         /// Box IPv4 address from `trakr devices`. Requires --name.
-        #[arg(long, requires = "name")]
+        #[arg(long, requires = "name", conflicts_with = "simulate")]
         address: Option<String>,
+        /// Connect a fake device instead of real hardware, so `trakr shot`
+        /// can drive test shots through a normal session (arm, events, the
+        /// Tauri UI). See also `trakr test-shot`, which skips the daemon
+        /// entirely for a quicker one-off link check.
+        #[arg(long)]
+        simulate: bool,
         /// Player handedness to configure on connect.
         #[arg(long, value_parser = ["right", "left"])]
         hand: Option<String>,
@@ -163,6 +169,80 @@ enum Cmd {
         #[arg(long, default_value_t = -3.0)]
         axis: f32,
     },
+    /// Fire a synthetic shot through the current session. Only works after
+    /// `trakr connect --simulate` -- real hardware reports its own shots.
+    /// Unlike `test-shot`, this goes through the daemon: the shot shows up
+    /// in `trakr events`, the Tauri UI, and is forwarded to the sim exactly
+    /// like a real one, so it's the way to drive several shots through a
+    /// round and watch trakr's own state (armed, mode, hand) react.
+    #[command(
+        allow_negative_numbers = true,
+        after_help = "Examples:\n  trakr connect --simulate && trakr arm\n  trakr shot                                           # default: 150mph, 12.5vla, 1hla, 2800rpm, -3 axis\n  trakr shot --speed 165 --vla 14 --spin 3200\n  trakr shot --club 7i                                 # plausible 7-iron shot, reference carry\n  trakr shot --club 7i --carry-yd 145\n  trakr shot --club 7i --player Cori                   # carry from Cori's bag (`trakr player show Cori`)\n  trakr events                                         # watch it happen"
+    )]
+    Shot {
+        /// Generate a plausible shot for this club (see `trakr clubs`)
+        /// instead of raw numbers. Conflicts with --speed/--vla/--spin;
+        /// --hla/--axis still apply as shot shape.
+        #[arg(long, conflicts_with_all = ["speed", "vla", "spin"])]
+        club: Option<String>,
+        /// Target carry in yards for --club. Defaults to --player's bag
+        /// entry for that club, or the club's typical carry if neither is
+        /// given.
+        #[arg(long, requires = "club")]
+        carry_yd: Option<f32>,
+        /// Look up --club's carry distance from this player's bag (see
+        /// `trakr player show <name>`).
+        #[arg(long, requires = "club")]
+        player: Option<String>,
+        #[arg(long)]
+        speed: Option<f32>,
+        #[arg(long)]
+        vla: Option<f32>,
+        #[arg(long, default_value_t = 1.0)]
+        hla: f32,
+        #[arg(long)]
+        spin: Option<f32>,
+        #[arg(long, default_value_t = -3.0)]
+        axis: f32,
+    },
+    /// List known clubs and their typical carry/launch/spin, used by `trakr
+    /// shot --club` and player bags.
+    Clubs,
+    /// Manage player profiles: a name, handedness, and a bag of clubs with
+    /// the carry distance (yards) that player hits each one. Reference
+    /// data -- `trakr shot --club <c> --player <name>` is the one place it
+    /// drives behavior.
+    Player {
+        #[command(subcommand)]
+        action: PlayerCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum PlayerCmd {
+    /// List all players.
+    List,
+    /// Create a new player with an empty bag.
+    Add {
+        name: String,
+        #[arg(long, value_parser = ["right", "left"], default_value = "right")]
+        hand: String,
+    },
+    /// Remove a player and their bag.
+    Remove { name: String },
+    /// Show one player's bag.
+    Show { name: String },
+    /// Set (or update) the carry distance for one club in a player's bag.
+    #[command(name = "set-club")]
+    SetClub {
+        name: String,
+        /// Club code, e.g. "DR", "7I", "PW" (see `trakr clubs`).
+        club: String,
+        carry_yd: f32,
+    },
+    /// Remove one club from a player's bag.
+    #[command(name = "remove-club")]
+    RemoveClub { name: String, club: String },
 }
 
 #[tokio::main]
@@ -207,9 +287,21 @@ async fn main() -> Result<()> {
         Some(Cmd::Connect {
             name,
             address,
+            simulate,
             hand,
             chip_via_normal,
-        }) => connect(&client, &cli.daemon, name, address, hand, chip_via_normal).await?,
+        }) => {
+            connect(
+                &client,
+                &cli.daemon,
+                name,
+                address,
+                simulate,
+                hand,
+                chip_via_normal,
+            )
+            .await?
+        }
         Some(Cmd::Status) => status(&client, &cli.daemon).await?,
         Some(Cmd::Arm) => simple_post(&client, &cli.daemon, "/v1/session/arm", None).await?,
         Some(Cmd::Disarm) => simple_post(&client, &cli.daemon, "/v1/session/disarm", None).await?,
@@ -263,6 +355,47 @@ async fn main() -> Result<()> {
             test_shot(host, port, speed, vla, hla, spin, axis).await?;
             0
         }
+        Some(Cmd::Shot {
+            club,
+            carry_yd,
+            player,
+            speed,
+            vla,
+            hla,
+            spin,
+            axis,
+        }) => {
+            let mut body = serde_json::Map::new();
+            if let Some(c) = club {
+                body.insert("club".into(), Value::String(c));
+            }
+            if let Some(c) = carry_yd {
+                body.insert("carry_yd".into(), Value::from(c));
+            }
+            if let Some(p) = player {
+                body.insert("player".into(), Value::String(p));
+            }
+            if let Some(s) = speed {
+                body.insert("speed_mph".into(), Value::from(s));
+            }
+            if let Some(v) = vla {
+                body.insert("vla_deg".into(), Value::from(v));
+            }
+            if let Some(sp) = spin {
+                body.insert("spin_rpm".into(), Value::from(sp));
+            }
+            body.insert("hla_deg".into(), Value::from(hla));
+            body.insert("axis_deg".into(), Value::from(axis));
+            simple_post(
+                &client,
+                &cli.daemon,
+                "/v1/session/shot",
+                Some(Value::Object(body)),
+            )
+            .await?
+        }
+        Some(Cmd::Clubs) => clubs(&client, &cli.daemon).await?,
+        Some(Cmd::Player { action }) => player_cmd(&client, &cli.daemon, action).await?,
     };
     std::process::exit(exit_code);
 }
@@ -375,10 +508,14 @@ async fn connect(
     daemon: &str,
     name: Option<String>,
     address: Option<String>,
+    simulate: bool,
     hand: Option<String>,
     chip_via_normal: bool,
 ) -> Result<i32> {
     let mut body = serde_json::Map::new();
+    if simulate {
+        body.insert("kind".into(), Value::String("simulated".into()));
+    }
     if let Some(n) = name {
         body.insert("name".into(), Value::String(n));
     }
@@ -558,6 +695,259 @@ async fn settings(
             ],
         )
     );
+    Ok(0)
+}
+
+async fn clubs(client: &reqwest::Client, daemon: &str) -> Result<i32> {
+    let resp = client
+        .get(format!("{daemon}/v1/clubs"))
+        .send()
+        .await
+        .context("could not reach the trakr daemon")?;
+    if !resp.status().is_success() {
+        return print_error_response(resp).await;
+    }
+    let body: Value = resp.json().await?;
+    let rows: Vec<Vec<String>> = body["clubs"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(|c| {
+            vec![
+                c["club"].as_str().unwrap_or("").into(),
+                format!("{:.0}", c["carry_yd"].as_f64().unwrap_or(0.0)),
+                format!("{:.0}", c["ball_speed_mph"].as_f64().unwrap_or(0.0)),
+                format!("{:.1}", c["vla_deg"].as_f64().unwrap_or(0.0)),
+                format!("{:.0}", c["spin_rpm"].as_f64().unwrap_or(0.0)),
+            ]
+        })
+        .collect();
+    print!(
+        "{}",
+        toon::table(
+            "clubs",
+            &["club", "carry_yd", "ball_speed_mph", "vla_deg", "spin_rpm"],
+            &rows,
+        )
+    );
+    print!(
+        "{}",
+        toon::help(&["Run `trakr shot --club <code>` to fire a plausible shot for one".into()])
+    );
+    Ok(0)
+}
+
+/// Builds `{daemon}/v1/players/<name>[/clubs/<club>]` with proper URL
+/// encoding for names/clubs that aren't plain identifiers.
+fn player_url(daemon: &str, name: &str, club: Option<&str>) -> Result<String> {
+    let mut url = reqwest::Url::parse(daemon)?;
+    {
+        let mut segs = url
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("invalid daemon URL"))?;
+        segs.push("v1").push("players").push(name);
+        if let Some(c) = club {
+            segs.push("clubs").push(c);
+        }
+    }
+    Ok(url.to_string())
+}
+
+async fn player_cmd(client: &reqwest::Client, daemon: &str, action: PlayerCmd) -> Result<i32> {
+    match action {
+        PlayerCmd::List => player_list(client, daemon).await,
+        PlayerCmd::Add { name, hand } => player_add(client, daemon, name, hand).await,
+        PlayerCmd::Remove { name } => player_remove(client, daemon, name).await,
+        PlayerCmd::Show { name } => player_show(client, daemon, name).await,
+        PlayerCmd::SetClub {
+            name,
+            club,
+            carry_yd,
+        } => player_set_club(client, daemon, name, club, carry_yd).await,
+        PlayerCmd::RemoveClub { name, club } => {
+            player_remove_club(client, daemon, name, club).await
+        }
+    }
+}
+
+async fn player_list(client: &reqwest::Client, daemon: &str) -> Result<i32> {
+    let resp = client
+        .get(format!("{daemon}/v1/players"))
+        .send()
+        .await
+        .context("could not reach the trakr daemon")?;
+    if !resp.status().is_success() {
+        return print_error_response(resp).await;
+    }
+    let body: Value = resp.json().await?;
+    let players = body["players"].as_array().cloned().unwrap_or_default();
+    if players.is_empty() {
+        println!("players: none");
+        print!(
+            "{}",
+            toon::help(&["Run `trakr player add <name>` to create one".into()])
+        );
+        return Ok(0);
+    }
+    let rows: Vec<Vec<String>> = players
+        .iter()
+        .map(|p| {
+            vec![
+                p["name"].as_str().unwrap_or("").into(),
+                if p["right_handed"].as_bool().unwrap_or(true) {
+                    "right".into()
+                } else {
+                    "left".into()
+                },
+                p["bag"]
+                    .as_array()
+                    .map(|b| b.len())
+                    .unwrap_or(0)
+                    .to_string(),
+            ]
+        })
+        .collect();
+    print!(
+        "{}",
+        toon::table("players", &["name", "hand", "clubs"], &rows)
+    );
+    print!(
+        "{}",
+        toon::help(&["Run `trakr player show <name>` to see a bag".into()])
+    );
+    Ok(0)
+}
+
+async fn player_add(
+    client: &reqwest::Client,
+    daemon: &str,
+    name: String,
+    hand: String,
+) -> Result<i32> {
+    let resp = client
+        .post(format!("{daemon}/v1/players"))
+        .json(&serde_json::json!({ "name": name, "right_handed": hand == "right" }))
+        .send()
+        .await
+        .context("could not reach the trakr daemon")?;
+    if !resp.status().is_success() {
+        return print_error_response(resp).await;
+    }
+    println!("player: created");
+    print!(
+        "{}",
+        toon::help(&[format!(
+            "Run `trakr player set-club {name} <club> <carry_yd>` to add clubs"
+        )])
+    );
+    Ok(0)
+}
+
+async fn player_remove(client: &reqwest::Client, daemon: &str, name: String) -> Result<i32> {
+    let resp = client
+        .delete(player_url(daemon, &name, None)?)
+        .send()
+        .await
+        .context("could not reach the trakr daemon")?;
+    if !resp.status().is_success() {
+        return print_error_response(resp).await;
+    }
+    let body: Value = resp.json().await?;
+    if body["deleted"].as_bool() == Some(true) {
+        println!("player: removed");
+    } else {
+        println!("player: no such player (no-op)");
+    }
+    Ok(0)
+}
+
+async fn player_show(client: &reqwest::Client, daemon: &str, name: String) -> Result<i32> {
+    let resp = client
+        .get(player_url(daemon, &name, None)?)
+        .send()
+        .await
+        .context("could not reach the trakr daemon")?;
+    if !resp.status().is_success() {
+        return print_error_response(resp).await;
+    }
+    let p: Value = resp.json().await?;
+    print!(
+        "{}",
+        toon::record(
+            "player",
+            &[
+                ("name", p["name"].as_str().unwrap_or("").to_string()),
+                (
+                    "hand",
+                    if p["right_handed"].as_bool().unwrap_or(true) {
+                        "right".into()
+                    } else {
+                        "left".into()
+                    }
+                ),
+            ],
+        )
+    );
+    let bag = p["bag"].as_array().cloned().unwrap_or_default();
+    if bag.is_empty() {
+        println!("bag: empty");
+        print!(
+            "{}",
+            toon::help(&[format!(
+                "Run `trakr player set-club {name} <club> <carry_yd>` to add one"
+            )])
+        );
+    } else {
+        let rows: Vec<Vec<String>> = bag
+            .iter()
+            .map(|c| {
+                vec![
+                    c["club"].as_str().unwrap_or("").into(),
+                    format!("{:.0}", c["carry_yd"].as_f64().unwrap_or(0.0)),
+                ]
+            })
+            .collect();
+        print!("{}", toon::table("bag", &["club", "carry_yd"], &rows));
+    }
+    Ok(0)
+}
+
+async fn player_set_club(
+    client: &reqwest::Client,
+    daemon: &str,
+    name: String,
+    club: String,
+    carry_yd: f32,
+) -> Result<i32> {
+    let resp = client
+        .put(player_url(daemon, &name, Some(&club))?)
+        .json(&serde_json::json!({ "carry_yd": carry_yd }))
+        .send()
+        .await
+        .context("could not reach the trakr daemon")?;
+    if !resp.status().is_success() {
+        return print_error_response(resp).await;
+    }
+    println!("player: {name}'s {club} set to {carry_yd} yd");
+    Ok(0)
+}
+
+async fn player_remove_club(
+    client: &reqwest::Client,
+    daemon: &str,
+    name: String,
+    club: String,
+) -> Result<i32> {
+    let resp = client
+        .delete(player_url(daemon, &name, Some(&club))?)
+        .send()
+        .await
+        .context("could not reach the trakr daemon")?;
+    if !resp.status().is_success() {
+        return print_error_response(resp).await;
+    }
+    println!("player: {name}'s {club} removed");
     Ok(0)
 }
 

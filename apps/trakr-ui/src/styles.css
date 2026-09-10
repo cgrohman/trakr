@@ -286,6 +286,41 @@ select {
 .control-group { display: flex; align-items: center; gap: 6px; }
 .control-group label { font-size: 12px; color: var(--text-dim); }
 
+.fire-shot input[type="number"] {
+  width: 70px;
+  background: #232733;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+.text-input {
+  background: #1d212a;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.text-input.name-input { flex: 1; min-width: 120px; }
+.text-input.carry-input { width: 90px; }
+
+.bag-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1d212a;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: var(--mono);
+}
+.bag-row.active { border-color: var(--accent); }
+.bag-row .player-meta { color: var(--text-dim); font-size: 12px; margin-left: 8px; }
+
 .event-log {
   flex: 1;
   min-height: 160px;

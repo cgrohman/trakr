@@ -27,7 +27,10 @@
     <section class="panel" id="panel-devices">
       <div class="panel-head">
         <h2>Devices</h2>
-        <button id="btn-scan">Scan</button>
+        <div class="controls">
+          <button id="btn-connect-simulated" class="hidden" title="Connect a fake device to test without hardware">Connect (Simulated)</button>
+          <button id="btn-scan">Scan</button>
+        </div>
       </div>
       <input
         id="input-broadcast"
@@ -97,6 +100,62 @@
             </select>
           </div>
         </div>
+
+        <div id="fire-shot" class="hidden fire-shot">
+          <div class="settings-group-title" style="margin: 14px 0 8px;">Fire test shot</div>
+          <div class="controls" style="margin-bottom: 8px;">
+            <div class="control-group">
+              <label>Player</label>
+              <select id="fire-player"><option value="">(none)</option></select>
+            </div>
+            <div class="control-group">
+              <label>Club</label>
+              <select id="fire-club"><option value="">Custom numbers</option></select>
+            </div>
+          </div>
+          <div id="fire-numbers" class="controls">
+            <div class="control-group"><label>Speed</label><input id="fire-speed" type="number" step="0.1" value="150" /></div>
+            <div class="control-group"><label>VLA</label><input id="fire-vla" type="number" step="0.1" value="12.5" /></div>
+            <div class="control-group"><label>HLA</label><input id="fire-hla" type="number" step="0.1" value="1" /></div>
+            <div class="control-group"><label>Spin</label><input id="fire-spin" type="number" step="1" value="2800" /></div>
+            <div class="control-group"><label>Axis</label><input id="fire-axis" type="number" step="0.1" value="-3" /></div>
+          </div>
+          <div id="fire-club-note" class="empty-state hidden" style="padding: 4px 0;"></div>
+          <div class="controls" style="margin-top: 8px;">
+            <button id="btn-fire-shot" class="primary">Fire</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel panel-wide" id="panel-players">
+      <div class="panel-head">
+        <h2>Players</h2>
+      </div>
+      <div class="controls" style="margin-bottom: 10px;">
+        <input id="input-player-name" type="text" class="text-input name-input" placeholder="Name" />
+        <select id="input-player-hand">
+          <option value="right">Right</option>
+          <option value="left">Left</option>
+        </select>
+        <button id="btn-player-add" class="primary">Add Player</button>
+      </div>
+      <ul id="player-list" class="device-list">
+        <li class="empty">No players yet. Add one to give "Fire test shot" realistic per-club carry distances.</li>
+      </ul>
+      <div id="player-bag" class="hidden" style="margin-top: 12px;">
+        <div class="settings-group-title" style="margin-bottom: 8px;">
+          Bag: <span id="player-bag-name"></span>
+          <button id="btn-player-deselect" style="margin-left: 8px;">Done</button>
+        </div>
+        <ul id="player-bag-list" class="device-list">
+          <li class="empty">No clubs yet.</li>
+        </ul>
+        <div class="controls" style="margin-top: 8px;">
+          <select id="input-bag-club"></select>
+          <input id="input-bag-carry" type="number" class="text-input carry-input" placeholder="carry yd" />
+          <button id="btn-bag-set-club">Set carry</button>
+        </div>
       </div>
     </section>
 
@@ -154,6 +213,16 @@
             <option value="true">Putting</option>
             <option value="false">Normal</option>
           </select>
+        </label>
+
+        <h3 class="settings-group-title" style="margin-top: 8px;">Developer</h3>
+        <p class="settings-hint">
+          Testing without hardware. Applies immediately, stored on this
+          machine only.
+        </p>
+        <label class="settings-row">
+          <span>Debug mode (reveals "Connect (Simulated)")</span>
+          <input type="checkbox" id="setting-debug-mode" />
         </label>
       </div>
 
