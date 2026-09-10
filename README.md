@@ -148,11 +148,12 @@ Every push to `main` runs an unsigned build-only sanity check
 (`.github/workflows/tauri-build.yml`). To actually publish a release that
 `scripts/install.sh` and the in-app updater can see:
 
-1. Bump the version in `apps/trakr-ui/src-tauri/tauri.conf.json`,
-   `apps/trakr-ui/src-tauri/Cargo.toml`, and `apps/trakr-ui/package.json`
-   (all three — `tauri-action` doesn't do this for you).
+1. `scripts/bump-version.sh 0.2.0` — updates `apps/trakr-ui/src-tauri/tauri.conf.json`,
+   `apps/trakr-ui/src-tauri/Cargo.toml`, and `apps/trakr-ui/package.json` together
+   (`tauri-action` doesn't do this for you, and they'll drift if bumped by hand
+   one at a time) and refreshes `Cargo.lock`.
 2. Commit and merge that bump to `main`.
-3. Tag it and push the tag: `git tag v0.1.0 && git push origin v0.1.0`.
+3. Tag it and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
 
 `.github/workflows/release.yml` builds Linux and Windows bundles, signs them
 with the `TAURI_SIGNING_PRIVATE_KEY` repo secret, and publishes them plus an
