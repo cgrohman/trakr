@@ -532,7 +532,9 @@ function handleEvent(kind, data) {
       showNoSession();
       break;
     case "status":
-      logEvent("status", `battery ${data.battery_pct ?? "?"}% · armed ${!!data.armed} · rssi ${data.rssi ?? "?"}`);
+      // The box pushes these every ~second; they're already reflected live
+      // in the Session stats panel, so logging each one would drown out the
+      // actually interesting events (connect, arm, shot, error) in the log.
       renderSession({ device: lastDevice, status: data, last_shot: lastShot });
       break;
     case "ready":

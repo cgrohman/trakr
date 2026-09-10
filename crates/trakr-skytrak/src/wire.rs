@@ -159,6 +159,9 @@ pub struct StatusPacket {
     pub handedness_right: bool,
     /// 0 = network mode, 1 = direct (box-as-AP) mode, else unknown.
     pub connection_mode: i32,
+    /// Raw accelerometer X/Y/Z, `shot-data.md` §5. Fed into the launch-angle
+    /// tilt correction -- see `shot_decode::tilt_pitch_deg`.
+    pub accel: (i32, i32, i32),
 }
 
 pub fn parse_status(pkt: &[u8]) -> Option<StatusPacket> {
@@ -178,7 +181,26 @@ pub fn parse_status(pkt: &[u8]) -> Option<StatusPacket> {
         box_name: cstr(&pkt[0x50..0x70]),
         handedness_right: i32_at(0x38) == 0,
         connection_mode: i32_at(0x88),
+        accel: (i32_at(0x08), i32_at(0x0C), i32_at(0x10)),
     })
+}
+
+/// Accelerometer tilt-calibration reference, `shot-data.md` §6.6. The box
+/// reports a "6 axis calib" reference (12 floats at packet offset `0x33C`)
+/// when `1/scale` falls in one of two documented ranges, else a simpler
+/// "1 axis calib" reference vector (3 i32 at `0x158`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TiltCalibration {
+    OneAxis {
+        x: i32,
+        y: i32,
+        z: i32,
+    },
+    /// Valid on this box, but not implemented: the vendor rotates the live
+    /// accelerometer through this reference via an undocumented transform
+    /// (`FUN_180013fc0` in the decompile) we haven't recovered.
+    SixAxisUnsupported,
+    Unavailable,
 }
 
 /// Fields read from a `0xAAAAAAAA` params packet.
@@ -187,6 +209,7 @@ pub struct ParamsPacket {
     pub firmware_version: f32,
     pub serial: String,
     pub ap_mode: bool,
+    pub tilt_calib: TiltCalibration,
 }
 
 pub fn parse_params(pkt: &[u8]) -> Option<ParamsPacket> {
@@ -198,9 +221,27 @@ pub fn parse_params(pkt: &[u8]) -> Option<ParamsPacket> {
     let serial =
         String::from_utf8_lossy(pkt[0x164..0x170].split(|&b| b == 0).next().unwrap_or(&[]))
             .into_owned();
+    let tilt_calib = if pkt.len() >= 0x348 {
+        let scale_inv = f32_at(0x33C);
+        let six_axis_valid =
+            (14744.7..=18021.3).contains(&scale_inv) || (920.7..=1125.3).contains(&scale_inv);
+        if six_axis_valid {
+            TiltCalibration::SixAxisUnsupported
+        } else {
+            let (x, y, z) = (i32_at(0x158), i32_at(0x15C), i32_at(0x160));
+            if x == 0 && y == 0 && z == 0 {
+                TiltCalibration::Unavailable
+            } else {
+                TiltCalibration::OneAxis { x, y, z }
+            }
+        }
+    } else {
+        TiltCalibration::Unavailable
+    };
     Some(ParamsPacket {
         firmware_version: f32_at(0x14),
         serial,
+        tilt_calib,
         ap_mode: i32_at(0x2C) == 1,
     })
 }
@@ -223,7 +264,11 @@ impl Framer {
             }
             let magic = u32::from_le_bytes(self.buf[0..4].try_into().unwrap());
             let len = u32::from_le_bytes(self.buf[4..8].try_into().unwrap()) as usize;
-            if !(8..=0x20000).contains(&len) || self.buf.len() < len {
+            // Upper bound must clear a real shot image chunk (~0x6001A bytes
+            // per docs/skytrak-protocol/shot-data.md); 0x20000 (128 KiB) was
+            // sized for control packets only and would silently stall on the
+            // first real shot's image data.
+            if !(8..=0x80000).contains(&len) || self.buf.len() < len {
                 break;
             }
             let pkt: Vec<u8> = self.buf.drain(..len).collect();
