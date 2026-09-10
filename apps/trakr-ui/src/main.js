@@ -69,6 +69,8 @@ const el = {
   settingForceChipDistance: $("setting-force-chip-distance"),
   settingChipVia: $("setting-chip-via"),
   settingDebugMode: $("setting-debug-mode"),
+  settingsUpdateStatus: $("settings-update-status"),
+  btnCheckUpdate: $("btn-check-update"),
 };
 
 function logEvent(kind, detail) {
@@ -501,10 +503,26 @@ document.addEventListener("keydown", (ev) => {
 // shell (e.g. loading src/index.html directly in a browser for UI dev).
 
 let pendingUpdate = null;
+let currentVersion = null;
 
-async function checkForUpdate() {
+async function loadCurrentVersion() {
+  const app = window.__TAURI__?.app;
+  if (!app) return;
+  try {
+    currentVersion = await app.getVersion();
+    el.settingsUpdateStatus.textContent = `Version ${currentVersion}`;
+  } catch {
+    /* ignore -- not fatal, status line just stays blank */
+  }
+}
+
+async function checkForUpdate(manual = false) {
   const updater = window.__TAURI__?.updater;
   if (!updater) return;
+  if (manual) {
+    el.btnCheckUpdate.disabled = true;
+    el.settingsUpdateStatus.textContent = "Checking for updates…";
+  }
   try {
     const update = await updater.check();
     if (update?.available) {
@@ -512,9 +530,15 @@ async function checkForUpdate() {
       el.btnUpdate.textContent = `Update to v${update.version}`;
       el.btnUpdate.classList.remove("hidden");
       logEvent("status", `update available: v${update.version}`);
+      if (manual) el.settingsUpdateStatus.textContent = `Update available: v${update.version}`;
+    } else if (manual) {
+      el.settingsUpdateStatus.textContent = `Version ${currentVersion ?? "?"} (up to date)`;
     }
   } catch (e) {
     logEvent("error", `update check failed: ${e}`);
+    if (manual) el.settingsUpdateStatus.textContent = "Update check failed";
+  } finally {
+    if (manual) el.btnCheckUpdate.disabled = false;
   }
 }
 
@@ -536,6 +560,7 @@ async function installUpdate() {
 }
 
 el.btnUpdate.onclick = installUpdate;
+el.btnCheckUpdate.onclick = () => checkForUpdate(true);
 
 // --- Live events (SSE) ------------------------------------------------------
 
@@ -612,4 +637,5 @@ refreshStatus();
 connectEvents();
 loadClubs();
 loadPlayers();
+loadCurrentVersion();
 checkForUpdate();

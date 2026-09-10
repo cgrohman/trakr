@@ -148,6 +148,10 @@ Every push to `main` runs an unsigned build-only sanity check
 (`.github/workflows/tauri-build.yml`). To actually publish a release that
 `scripts/install.sh` and the in-app updater can see:
 
+Versioning: bump the minor version (`0.x.0`) only for meaningfully-sized
+changes (new features, layout changes users will notice); small fixes and
+tweaks bump the patch version (`0.x.y`) instead.
+
 1. `scripts/bump-version.sh 0.2.0` — updates `apps/trakr-ui/src-tauri/tauri.conf.json`,
    `apps/trakr-ui/src-tauri/Cargo.toml`, and `apps/trakr-ui/package.json` together
    (`tauri-action` doesn't do this for you, and they'll drift if bumped by hand
