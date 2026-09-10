@@ -1,10 +1,12 @@
 name: Build desktop app
 
 # Builds the actual installable trakr-ui bundles (.deb/.AppImage on Linux,
-# .msi/.exe on Windows) and uploads them as workflow artifacts. Deliberately
-# does NOT create a GitHub Release: omitting tagName/releaseName/releaseId is
-# tauri-action's documented "build only" mode. Wire up a release trigger
-# later if/when you actually want tagged builds published publicly.
+# .msi/.exe on Windows) and uploads them as workflow artifacts, on every push
+# to main, as an unsigned sanity check that the bundle still builds.
+# Deliberately does NOT create a GitHub Release: omitting tagName/
+# releaseName/releaseId is tauri-action's documented "build only" mode.
+# For tagged, signed, publicly-distributed releases (which is what the
+# in-app updater and install.sh consume), see .github/workflows/release.yml.
 
 on:
   push:

@@ -26,6 +26,21 @@ exercised yet.
 | `docs/` | Protocol reverse-engineering notes and the HTTP API reference. |
 | `research/` | Reverse-engineering workspace (decompiles, capture scripts). Not shipped — see `research/README.md`. |
 
+## Install (desktop app)
+
+Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/cgrohman/trakr/main/scripts/install.sh | sh
+```
+
+Windows: grab the `.msi` from the
+[latest release](https://github.com/cgrohman/trakr/releases/latest).
+
+The app checks for updates on launch and shows an **Update available** button
+in the header when one's ready — no need to re-run the install script for
+future versions.
+
 ## Quick start
 
 ```sh
@@ -126,6 +141,25 @@ cargo test --workspace        # unit tests, including CRC values confirmed
 cargo clippy --workspace --all-targets
 cargo fmt
 ```
+
+### Releasing a new desktop app version
+
+Every push to `main` runs an unsigned build-only sanity check
+(`.github/workflows/tauri-build.yml`). To actually publish a release that
+`scripts/install.sh` and the in-app updater can see:
+
+1. Bump the version in `apps/trakr-ui/src-tauri/tauri.conf.json`,
+   `apps/trakr-ui/src-tauri/Cargo.toml`, and `apps/trakr-ui/package.json`
+   (all three — `tauri-action` doesn't do this for you).
+2. Commit and merge that bump to `main`.
+3. Tag it and push the tag: `git tag v0.1.0 && git push origin v0.1.0`.
+
+`.github/workflows/release.yml` builds Linux and Windows bundles, signs them
+with the `TAURI_SIGNING_PRIVATE_KEY` repo secret, and publishes them plus an
+update manifest to a GitHub Release named after the tag. The updater's public
+key lives in `tauri.conf.json` (`plugins.updater.pubkey`) — regenerate both
+with `npx tauri signer generate` only if the private key is ever lost or
+rotated, since old installs won't trust updates signed with a new key.
 
 ## Status
 
