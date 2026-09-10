@@ -53,6 +53,14 @@ header h1 {
   color: var(--text-dim);
 }
 
+#btn-update {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #1a1300;
+  font-weight: 600;
+}
+#btn-update:hover:not(:disabled) { background: #e0b558; }
+
 .icon-button {
   display: flex;
   align-items: center;

@@ -59,6 +59,7 @@ const el = {
   shotAxis: $("shot-axis"),
   eventLog: $("event-log"),
   btnClearLog: $("btn-clear-log"),
+  btnUpdate: $("btn-update"),
   btnSettings: $("btn-settings"),
   btnSettingsClose: $("btn-settings-close"),
   btnSettingsSave: $("btn-settings-save"),
@@ -493,6 +494,49 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && !el.settingsBackdrop.classList.contains("hidden")) closeSettings();
 });
 
+// --- Auto-update -------------------------------------------------------------
+// Uses the plugin's global JS bindings (window.__TAURI__.updater/process, via
+// `withGlobalTauri` in tauri.conf.json) instead of an npm import, matching
+// this app's no-bundler setup. Guarded so it's a no-op outside the Tauri
+// shell (e.g. loading src/index.html directly in a browser for UI dev).
+
+let pendingUpdate = null;
+
+async function checkForUpdate() {
+  const updater = window.__TAURI__?.updater;
+  if (!updater) return;
+  try {
+    const update = await updater.check();
+    if (update?.available) {
+      pendingUpdate = update;
+      el.btnUpdate.textContent = `Update to v${update.version}`;
+      el.btnUpdate.classList.remove("hidden");
+      logEvent("status", `update available: v${update.version}`);
+    }
+  } catch (e) {
+    logEvent("error", `update check failed: ${e}`);
+  }
+}
+
+async function installUpdate() {
+  if (!pendingUpdate) return;
+  el.btnUpdate.disabled = true;
+  el.btnUpdate.textContent = "Downloading…";
+  try {
+    await pendingUpdate.downloadAndInstall((event) => {
+      if (event.event === "Progress") el.btnUpdate.textContent = "Installing…";
+    });
+    logEvent("status", "update installed, relaunching…");
+    await window.__TAURI__.process.relaunch();
+  } catch (e) {
+    logEvent("error", `update install failed: ${e}`);
+    el.btnUpdate.disabled = false;
+    el.btnUpdate.textContent = `Update to v${pendingUpdate.version}`;
+  }
+}
+
+el.btnUpdate.onclick = installUpdate;
+
 // --- Live events (SSE) ------------------------------------------------------
 
 function connectEvents() {
@@ -568,3 +612,4 @@ refreshStatus();
 connectEvents();
 loadClubs();
 loadPlayers();
+checkForUpdate();
