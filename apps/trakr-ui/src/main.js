@@ -14,6 +14,7 @@ const el = {
   daemonLabel: $("daemon-label"),
   deviceList: $("device-list"),
   btnScan: $("btn-scan"),
+  btnConnectSimulated: $("btn-connect-simulated"),
   btnDisconnect: $("btn-disconnect"),
   sessionEmpty: $("session-empty"),
   sessionActive: $("session-active"),
@@ -27,6 +28,28 @@ const el = {
   btnDisarm: $("btn-disarm"),
   selectMode: $("select-mode"),
   selectHand: $("select-hand"),
+  fireShot: $("fire-shot"),
+  firePlayer: $("fire-player"),
+  fireClub: $("fire-club"),
+  fireNumbers: $("fire-numbers"),
+  fireClubNote: $("fire-club-note"),
+  fireSpeed: $("fire-speed"),
+  fireVla: $("fire-vla"),
+  fireHla: $("fire-hla"),
+  fireSpin: $("fire-spin"),
+  fireAxis: $("fire-axis"),
+  btnFireShot: $("btn-fire-shot"),
+  inputPlayerName: $("input-player-name"),
+  inputPlayerHand: $("input-player-hand"),
+  btnPlayerAdd: $("btn-player-add"),
+  playerList: $("player-list"),
+  playerBag: $("player-bag"),
+  playerBagName: $("player-bag-name"),
+  btnPlayerDeselect: $("btn-player-deselect"),
+  playerBagList: $("player-bag-list"),
+  inputBagClub: $("input-bag-club"),
+  inputBagCarry: $("input-bag-carry"),
+  btnBagSetClub: $("btn-bag-set-club"),
   shotEmpty: $("shot-empty"),
   shotData: $("shot-data"),
   shotSpeed: $("shot-speed"),
@@ -44,6 +67,7 @@ const el = {
   settingChipOnLobWedge: $("setting-chip-on-lob-wedge"),
   settingForceChipDistance: $("setting-force-chip-distance"),
   settingChipVia: $("setting-chip-via"),
+  settingDebugMode: $("setting-debug-mode"),
 };
 
 function logEvent(kind, detail) {
@@ -130,6 +154,12 @@ async function connect(name, address) {
   refreshStatus();
 }
 
+async function connectSimulated() {
+  logEvent("status", "connecting to a simulated device…");
+  await api("/v1/session", { method: "POST", body: JSON.stringify({ kind: "simulated" }) });
+  refreshStatus();
+}
+
 async function disconnect() {
   await api("/v1/session", { method: "DELETE" });
   showNoSession();
@@ -159,6 +189,7 @@ function renderSession(body) {
   el.statMode.textContent = status?.shot_mode ?? "—";
   if (status?.shot_mode) el.selectMode.value = status.shot_mode;
   if (status?.handedness) el.selectHand.value = status.handedness;
+  el.fireShot.classList.toggle("hidden", device?.kind !== "simulated");
 
   if (body.last_shot) renderShot(body.last_shot);
 }
@@ -180,9 +211,190 @@ function renderShot(shot) {
   el.shotAxis.textContent = shot.ball.spin_axis_deg != null ? `${shot.ball.spin_axis_deg.toFixed(1)}°` : "—";
 }
 
+// --- Players / clubs ---------------------------------------------------------
+// Reference data for "Fire test shot": GET /v1/clubs is the typical
+// launch/spin table trakr-daemon uses to turn a club + carry distance into
+// plausible ball data; players' bags override the carry distance per club.
+
+let clubProfiles = [];
+let players = [];
+let activePlayerName = null; // which player's bag is open for editing below
+
+async function loadClubs() {
+  const { ok, body } = await api("/v1/clubs");
+  clubProfiles = ok ? body.clubs ?? [] : [];
+  el.inputBagClub.innerHTML = clubProfiles.map((c) => `<option value="${c.club}">${c.club}</option>`).join("");
+  populateFireClubOptions();
+}
+
+async function loadPlayers() {
+  const { ok, body } = await api("/v1/players");
+  players = ok ? body.players ?? [] : [];
+  renderPlayerList();
+  const previousPlayer = el.firePlayer.value;
+  el.firePlayer.innerHTML = ['<option value="">(none)</option>']
+    .concat(players.map((p) => `<option value="${p.name}">${p.name}</option>`))
+    .join("");
+  if ([...el.firePlayer.options].some((o) => o.value === previousPlayer)) {
+    el.firePlayer.value = previousPlayer;
+  }
+  populateFireClubOptions();
+  updateFireClubNote();
+}
+
+/// The "Club" dropdown in Fire Shot shows the selected player's own bag
+/// (their real carry distances) when they have one, falling back to the
+/// generic reference table (see GET /v1/clubs) otherwise.
+function populateFireClubOptions() {
+  const player = players.find((p) => p.name === el.firePlayer.value);
+  const source =
+    player && player.bag.length > 0
+      ? player.bag
+      : clubProfiles.map((c) => ({ club: c.club, carry_yd: c.carry_yd }));
+  const previousClub = el.fireClub.value;
+  el.fireClub.innerHTML = ['<option value="">Custom numbers</option>']
+    .concat(source.map((c) => `<option value="${c.club}">${c.club} (~${Math.round(c.carry_yd)}yd)</option>`))
+    .join("");
+  if ([...el.fireClub.options].some((o) => o.value === previousClub)) {
+    el.fireClub.value = previousClub;
+  }
+}
+
+function renderPlayerList() {
+  if (players.length === 0) {
+    el.playerList.innerHTML = '<li class="empty">No players yet. Add one to give "Fire test shot" realistic per-club carry distances.</li>';
+    return;
+  }
+  el.playerList.innerHTML = "";
+  for (const p of players) {
+    const li = document.createElement("li");
+    li.className = `bag-row${p.name === activePlayerName ? " active" : ""}`;
+    const info = document.createElement("div");
+    info.innerHTML = `<strong>${p.name}</strong><span class="player-meta">${p.right_handed ? "right" : "left"} · ${p.bag.length} club${p.bag.length === 1 ? "" : "s"}</span>`;
+    const actions = document.createElement("div");
+    actions.className = "controls";
+    const selectBtn = document.createElement("button");
+    selectBtn.textContent = p.name === activePlayerName ? "Editing bag" : "Edit bag";
+    selectBtn.disabled = p.name === activePlayerName;
+    selectBtn.onclick = () => selectPlayer(p.name);
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = "Remove";
+    removeBtn.onclick = () => deletePlayer(p.name);
+    actions.append(selectBtn, removeBtn);
+    li.append(info, actions);
+    el.playerList.appendChild(li);
+  }
+}
+
+function selectPlayer(name) {
+  activePlayerName = name;
+  el.playerBag.classList.remove("hidden");
+  el.playerBagName.textContent = name;
+  renderPlayerList();
+  renderBag();
+}
+
+function deselectPlayer() {
+  activePlayerName = null;
+  el.playerBag.classList.add("hidden");
+  renderPlayerList();
+}
+
+function renderBag() {
+  const player = players.find((p) => p.name === activePlayerName);
+  const bag = player?.bag ?? [];
+  if (bag.length === 0) {
+    el.playerBagList.innerHTML = '<li class="empty">No clubs yet.</li>';
+    return;
+  }
+  el.playerBagList.innerHTML = "";
+  for (const c of bag) {
+    const li = document.createElement("li");
+    li.className = "bag-row";
+    const info = document.createElement("div");
+    info.textContent = `${c.club} — ${Math.round(c.carry_yd)}yd`;
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = "Remove";
+    removeBtn.onclick = () => removeBagClub(c.club);
+    li.append(info, removeBtn);
+    el.playerBagList.appendChild(li);
+  }
+}
+
+async function addPlayer() {
+  const name = el.inputPlayerName.value.trim();
+  if (!name) return;
+  const { ok } = await api("/v1/players", {
+    method: "POST",
+    body: JSON.stringify({ name, right_handed: el.inputPlayerHand.value === "right" }),
+  });
+  if (ok) {
+    el.inputPlayerName.value = "";
+    logEvent("status", `player added: ${name}`);
+    await loadPlayers();
+  }
+}
+
+async function deletePlayer(name) {
+  await api(`/v1/players/${encodeURIComponent(name)}`, { method: "DELETE" });
+  if (name === activePlayerName) deselectPlayer();
+  logEvent("status", `player removed: ${name}`);
+  await loadPlayers();
+}
+
+async function setBagClub() {
+  if (!activePlayerName) return;
+  const club = el.inputBagClub.value;
+  const carryYd = Number(el.inputBagCarry.value);
+  if (!club || !carryYd) return;
+  await api(`/v1/players/${encodeURIComponent(activePlayerName)}/clubs/${encodeURIComponent(club)}`, {
+    method: "PUT",
+    body: JSON.stringify({ carry_yd: carryYd }),
+  });
+  el.inputBagCarry.value = "";
+  await loadPlayers();
+  renderBag();
+}
+
+async function removeBagClub(club) {
+  if (!activePlayerName) return;
+  await api(`/v1/players/${encodeURIComponent(activePlayerName)}/clubs/${encodeURIComponent(club)}`, {
+    method: "DELETE",
+  });
+  await loadPlayers();
+  renderBag();
+}
+
+function updateFireClubNote() {
+  const club = el.fireClub.value;
+  const isClubMode = !!club;
+  el.fireNumbers.classList.toggle("hidden", isClubMode);
+  el.fireClubNote.classList.toggle("hidden", !isClubMode);
+  if (!isClubMode) return;
+  const profile = clubProfiles.find((c) => c.club === club);
+  const playerCarry = el.firePlayer.value
+    ? players.find((p) => p.name === el.firePlayer.value)?.bag.find((c) => c.club.toUpperCase() === club.toUpperCase())?.carry_yd
+    : null;
+  const carryYd = playerCarry ?? profile?.carry_yd;
+  el.fireClubNote.textContent =
+    playerCarry != null
+      ? `Using ${el.firePlayer.value}'s ${club}: ${Math.round(carryYd)}yd carry`
+      : `Using reference ${club}: ${Math.round(carryYd)}yd carry (set this club in a player's bag for their real distance)`;
+}
+
+el.btnPlayerAdd.onclick = addPlayer;
+el.btnPlayerDeselect.onclick = deselectPlayer;
+el.btnBagSetClub.onclick = setBagClub;
+el.fireClub.onchange = updateFireClubNote;
+el.firePlayer.onchange = () => {
+  populateFireClubOptions();
+  updateFireClubNote();
+};
+
 // --- Controls --------------------------------------------------------------
 
 el.btnScan.onclick = scanDevices;
+el.btnConnectSimulated.onclick = connectSimulated;
 el.btnDisconnect.onclick = disconnect;
 el.btnArm.onclick = () => api("/v1/session/arm", { method: "POST" }).then(refreshStatus);
 el.btnDisarm.onclick = () => api("/v1/session/disarm", { method: "POST" }).then(refreshStatus);
@@ -192,6 +404,49 @@ el.selectHand.onchange = () =>
   api("/v1/session/hand", { method: "POST", body: JSON.stringify({ hand: el.selectHand.value }) }).then(refreshStatus);
 el.btnClearLog.onclick = () => {
   el.eventLog.innerHTML = "";
+};
+el.btnFireShot.onclick = () => {
+  const club = el.fireClub.value;
+  const body = club
+    ? { club, ...(el.firePlayer.value ? { player: el.firePlayer.value } : {}) }
+    : {
+        speed_mph: Number(el.fireSpeed.value),
+        vla_deg: Number(el.fireVla.value),
+        hla_deg: Number(el.fireHla.value),
+        spin_rpm: Number(el.fireSpin.value),
+        axis_deg: Number(el.fireAxis.value),
+      };
+  api("/v1/session/shot", { method: "POST", body: JSON.stringify(body) });
+};
+
+// --- Developer / debug mode --------------------------------------------------
+// Local to this machine only (localStorage), unrelated to the daemon-backed
+// chip settings below -- reveals "Connect (Simulated)" for testing without
+// real hardware. Applies immediately, no Save needed.
+
+const DEBUG_MODE_KEY = "trakr.debugMode";
+
+function loadDebugMode() {
+  try {
+    return localStorage.getItem(DEBUG_MODE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function applyDebugMode(on) {
+  el.btnConnectSimulated.classList.toggle("hidden", !on);
+}
+
+el.settingDebugMode.onchange = () => {
+  const on = el.settingDebugMode.checked;
+  try {
+    localStorage.setItem(DEBUG_MODE_KEY, on ? "true" : "false");
+  } catch {
+    /* ignore */
+  }
+  applyDebugMode(on);
+  logEvent("status", `debug mode ${on ? "enabled" : "disabled"}`);
 };
 
 // --- Settings ----------------------------------------------------------------
@@ -204,6 +459,7 @@ async function openSettings() {
     el.settingForceChipDistance.value = body.force_chip_distance_yd ?? "";
     el.settingChipVia.value = body.chip_via_putting ? "true" : "false";
   }
+  el.settingDebugMode.checked = loadDebugMode();
   el.settingsBackdrop.classList.remove("hidden");
 }
 
@@ -303,7 +559,10 @@ function handleEvent(kind, data) {
 
 // --- Boot --------------------------------------------------------------------
 
+applyDebugMode(loadDebugMode());
 pollHealth();
 setInterval(pollHealth, 3000);
 refreshStatus();
 connectEvents();
+loadClubs();
+loadPlayers();

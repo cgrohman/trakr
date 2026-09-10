@@ -27,6 +27,11 @@ connected, both return `200` rather than erroring.
 | POST | `/v1/session/disarm` | Disarm |
 | POST | `/v1/session/mode` | `{"mode": "normal"\|"putting"\|"chipping"}` (see `docs/skytrak-protocol/chipping-mode.md`) |
 | POST | `/v1/session/hand` | `{"hand": "right"\|"left"}` |
+| POST | `/v1/session/shot` | Fire a synthetic shot (only on a `kind: "simulated"` session — see below) |
+| GET | `/v1/clubs` | Reference club launch/spin table, used by `/v1/session/shot`'s `club` field |
+| GET/POST | `/v1/players` | List / create player profiles (name, handedness, bag of club carry distances) |
+| GET/DELETE | `/v1/players/{name}` | Get / remove one player |
+| PUT/DELETE | `/v1/players/{name}/clubs/{club}` | Set / remove one club's carry distance in a player's bag |
 | GET | `/v1/settings` | Current chipping settings (persisted to disk) |
 | POST | `/v1/settings` | Partial update; applies live, no reconnect needed |
 | GET | `/v1/events` | Server-Sent Events stream of everything the session does |
@@ -74,6 +79,45 @@ trakr connect --name SKYTRAK_C47F51902EE3 --address 192.168.4.61
 trakr arm
 trakr events
 ```
+
+## Testing without hardware
+
+`POST /v1/session {"kind": "simulated"}` connects a fake device instead of a
+real SkyTrak — same session, status, arm/disarm, mode, and hand endpoints,
+plus one extra: `POST /v1/session/shot` fires a synthetic shot through the
+whole event pipeline (`shot_started` + `shot` on `/v1/events`, forwarded to
+the sim via Open Connect exactly like a real one). Useful for driving several
+shots through a round in Muni Golf Sim (or any GSPro Open Connect sim) and
+watching the CLI/UI react, without needing hardware connected. Every field is
+optional and defaults to the same values as `trakr test-shot`:
+
+```sh
+curl -s -X POST http://127.0.0.1:7011/v1/session -d '{"kind":"simulated"}' -H 'content-type: application/json'
+curl -s -X POST http://127.0.0.1:7011/v1/session/arm
+curl -s -X POST http://127.0.0.1:7011/v1/session/shot \
+  -H 'content-type: application/json' \
+  -d '{"speed_mph": 150, "vla_deg": 12.5, "hla_deg": 1, "spin_rpm": 2800, "axis_deg": -3}'
+```
+
+Unlike `trakr test-shot` (which bypasses the daemon entirely, for a quick
+one-off link check), this goes through a real session — so it's what the
+Tauri UI uses for its "Simulated" connect option.
+
+### Players and clubs
+
+`POST /v1/session/shot` also accepts a `club` (see `GET /v1/clubs` for the
+reference launch/spin table) instead of raw numbers, and optionally a
+`player` whose bag (`GET/POST /v1/players`, `PUT/DELETE
+/v1/players/{name}/clubs/{club}`) supplies that club's real carry distance:
+
+```sh
+curl -s -X POST http://127.0.0.1:7011/v1/players -d '{"name":"Cori"}' -H 'content-type: application/json'
+curl -s -X PUT http://127.0.0.1:7011/v1/players/Cori/clubs/7I -d '{"carry_yd":145}' -H 'content-type: application/json'
+curl -s -X POST http://127.0.0.1:7011/v1/session/shot -d '{"club":"7I","player":"Cori"}' -H 'content-type: application/json'
+```
+
+Players are reference data (persisted the same way as chip settings): the
+only place they drive behavior is this carry-distance lookup.
 
 ## What's not here yet
 

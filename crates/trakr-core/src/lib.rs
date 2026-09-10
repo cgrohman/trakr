@@ -6,9 +6,12 @@
 //! protocols or simulators.
 
 pub mod device;
+pub mod player;
 pub mod shot;
+pub mod simulated;
 
 pub use device::{Capabilities, ConnectionKind, DeviceInfo, DeviceStatus, Handedness, ShotMode};
+pub use player::{ball_data_for_carry, club_profile, ClubCarry, ClubProfile, Player, CLUB_PROFILES};
 pub use shot::{BallData, ClubData, Confidence, FlightEstimate, Shot};
 
 use async_trait::async_trait;
@@ -52,6 +55,10 @@ pub enum Command {
     /// docs/skytrak-protocol/chipping-mode.md. No-op on drivers with a real
     /// native chipping mode.
     SetChipViaPutting(bool),
+    /// Inject a synthetic shot as if the device had just measured one.
+    /// Only meaningful on [`simulated::SimulatedDriver`]; real drivers ignore
+    /// it, since they report shots from hardware, not commands.
+    FireShot(Shot),
     Disconnect,
 }
 

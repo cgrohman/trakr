@@ -39,15 +39,16 @@
           "content": {
             "application/json": {
               "schema": { "type": "object", "properties": {
-                "kind": { "type": "string", "default": "skytrak", "enum": ["skytrak"] },
-                "name": { "type": "string", "description": "Box name from GET /v1/devices. Omit with address to auto-discover the first box found." },
-                "address": { "type": "string", "description": "Box IPv4 address. Required together with name." },
+                "kind": { "type": "string", "default": "skytrak", "enum": ["skytrak", "simulated"], "description": "\"simulated\" connects a fake device with no hardware, for testing via POST /v1/session/shot." },
+                "name": { "type": "string", "description": "Box name from GET /v1/devices. Omit with address to auto-discover the first box found. For kind \"simulated\", this is just a display name (default \"Simulated Launch Monitor\")." },
+                "address": { "type": "string", "description": "Box IPv4 address. Required together with name. Ignored for kind \"simulated\"." },
                 "broadcast": { "type": "array", "items": { "type": "string" }, "description": "Extra directed broadcast address(es) to scan if auto-discovering, beyond this host's own network interfaces." },
                 "right_handed": { "type": "boolean", "default": true }
               } },
               "examples": {
                 "known device": { "value": { "name": "SKYTRAK_C47F51902EE3", "address": "192.168.4.61" } },
-                "auto-discover": { "value": {} }
+                "auto-discover": { "value": {} },
+                "simulated": { "value": { "kind": "simulated" } }
               }
             }
           }
@@ -72,6 +73,73 @@
     },
     "/v1/session/hand": {
       "post": { "summary": "Set player handedness", "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "hand": { "type": "string", "enum": ["right", "left"] } }, "required": ["hand"] } } } }, "responses": { "202": { "description": "Command accepted" }, "422": { "description": "Invalid hand" }, "404": { "description": "No active session" } } }
+    },
+    "/v1/session/shot": {
+      "post": {
+        "summary": "Fire a synthetic shot into the current session",
+        "description": "Only works on a kind \"simulated\" session (see POST /v1/session) -- real hardware reports its own shots and can't be told to fake one. Either raw numbers, or a club (see GET /v1/clubs) to generate plausible ball data -- optionally with a carry_yd or a player whose bag (see /v1/players) supplies it. hla_deg/axis_deg apply as shot shape either way.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "properties": {
+                "speed_mph": { "type": "number", "default": 150.0 },
+                "vla_deg": { "type": "number", "default": 12.5, "description": "Vertical launch angle" },
+                "hla_deg": { "type": "number", "default": 1.0, "description": "Horizontal launch angle" },
+                "spin_rpm": { "type": "number", "default": 2800.0, "description": "Total spin" },
+                "axis_deg": { "type": "number", "default": -3.0, "description": "Spin axis" },
+                "club": { "type": "string", "description": "Generate plausible ball data for this club instead of speed_mph/vla_deg/spin_rpm above (see GET /v1/clubs)." },
+                "carry_yd": { "type": "number", "description": "Target carry for `club`. Defaults to `player`'s bag entry, or the club's reference carry." },
+                "player": { "type": "string", "description": "Look up `club`'s carry from this player's bag (GET /v1/players/{name})." }
+              } },
+              "examples": {
+                "defaults": { "value": {} },
+                "by club": { "value": { "club": "7I" } },
+                "by club and player": { "value": { "club": "7I", "player": "Cori" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": { "description": "Command accepted" },
+          "404": { "description": "No active session" },
+          "422": { "description": "Connected device is not simulated, or unknown club" }
+        }
+      }
+    },
+    "/v1/clubs": {
+      "get": {
+        "summary": "Reference club launch/spin table",
+        "description": "Typical launch conditions per club, used to turn a club + carry distance into plausible ball data for POST /v1/session/shot. Not a physics model -- see trakr_core::player for the method.",
+        "responses": { "200": { "description": "Known clubs", "content": { "application/json": { "example": { "clubs": [{ "club": "7I", "carry_yd": 140.0, "ball_speed_mph": 109.0, "vla_deg": 13.6, "spin_rpm": 6200.0 }] } } } } }
+      }
+    },
+    "/v1/players": {
+      "get": {
+        "summary": "List player profiles",
+        "responses": { "200": { "description": "Known players", "content": { "application/json": { "example": { "players": [{ "name": "Cori", "right_handed": true, "bag": [{ "club": "7I", "carry_yd": 145.0 }] }] } } } } }
+      },
+      "post": {
+        "summary": "Create a player",
+        "description": "Bag starts empty -- add clubs with PUT /v1/players/{name}/clubs/{club}.",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "right_handed": { "type": "boolean", "default": true } }, "required": ["name"] }, "examples": { "example": { "value": { "name": "Cori" } } } } } },
+        "responses": { "201": { "description": "Created" }, "409": { "description": "A player with this name already exists" }, "422": { "description": "Empty name" } }
+      }
+    },
+    "/v1/players/{name}": {
+      "get": { "summary": "Get one player", "responses": { "200": { "description": "Player" }, "404": { "description": "No such player" } } },
+      "delete": { "summary": "Remove a player and their bag", "description": "Idempotent: returns 200 either way.", "responses": { "200": { "description": "{\"deleted\": true|false}" } } }
+    },
+    "/v1/players/{name}/clubs/{club}": {
+      "put": {
+        "summary": "Set (or update) one club's carry distance in a player's bag",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "carry_yd": { "type": "number" } }, "required": ["carry_yd"] } } } },
+        "responses": { "200": { "description": "Updated player" }, "404": { "description": "No such player" } }
+      },
+      "delete": {
+        "summary": "Remove one club from a player's bag",
+        "description": "Idempotent: removing a club that isn't in the bag is not an error.",
+        "responses": { "200": { "description": "Updated player" }, "404": { "description": "No such player" } }
+      }
     },
     "/v1/settings": {
       "get": {
