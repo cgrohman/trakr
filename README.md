@@ -178,5 +178,8 @@ rotated, since old installs won't trust updates signed with a new key.
 
 trakr is an independent project. It is not affiliated with SkyTrak, GOLFTEC,
 Rapsodo, GSPro, or Muni Golf Sim. The SkyTrak driver is a clean-room
-implementation for interoperability with hardware the user owns. MIT
-licensed — see [LICENSE](LICENSE).
+implementation for interoperability with hardware the user owns.
+
+Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE): free to
+use, modify, and share for any non-commercial purpose. Commercial use
+requires a separate agreement — open an issue or contact the author.
