@@ -11,7 +11,9 @@ pub mod shot;
 pub mod simulated;
 
 pub use device::{Capabilities, ConnectionKind, DeviceInfo, DeviceStatus, Handedness, ShotMode};
-pub use player::{ball_data_for_carry, club_profile, ClubCarry, ClubProfile, Player, CLUB_PROFILES};
+pub use player::{
+    ball_data_for_carry, club_profile, ClubCarry, ClubProfile, Player, CLUB_PROFILES,
+};
 pub use shot::{BallData, ClubData, Confidence, FlightEstimate, Shot};
 
 use async_trait::async_trait;

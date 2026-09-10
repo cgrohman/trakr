@@ -198,7 +198,8 @@ impl AppState {
         let driver: Box<dyn trakr_core::LaunchMonitor> = if req.kind == "simulated" {
             Box::new(
                 trakr_core::simulated::SimulatedDriver::new(
-                    req.name.unwrap_or_else(|| "Simulated Launch Monitor".into()),
+                    req.name
+                        .unwrap_or_else(|| "Simulated Launch Monitor".into()),
                 )
                 .with_handedness(right_handed),
             )
@@ -279,7 +280,11 @@ impl AppState {
             .cloned()
     }
 
-    pub async fn create_player(&self, name: String, right_handed: bool) -> Result<Player, &'static str> {
+    pub async fn create_player(
+        &self,
+        name: String,
+        right_handed: bool,
+    ) -> Result<Player, &'static str> {
         let mut guard = self.0.players.write().await;
         if guard.iter().any(|p| p.name.eq_ignore_ascii_case(&name)) {
             return Err("player_exists");
@@ -317,7 +322,11 @@ impl AppState {
         let Some(player) = guard.iter_mut().find(|p| p.name.eq_ignore_ascii_case(name)) else {
             return Err("no_such_player");
         };
-        if let Some(entry) = player.bag.iter_mut().find(|c| c.club.eq_ignore_ascii_case(club)) {
+        if let Some(entry) = player
+            .bag
+            .iter_mut()
+            .find(|c| c.club.eq_ignore_ascii_case(club))
+        {
             entry.carry_yd = carry_yd;
         } else {
             player.bag.push(ClubCarry {
