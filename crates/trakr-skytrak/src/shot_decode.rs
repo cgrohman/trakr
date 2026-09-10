@@ -156,7 +156,7 @@ fn speed_correction_mph(speed_mph: f32, ha_deg: f32) -> f32 {
 pub fn aes128_ecb_decrypt(key: &[u8; 16], ciphertext: &[u8]) -> Vec<u8> {
     let cipher = Aes128::new(&GenericArray::clone_from_slice(key));
     let mut out = ciphertext.to_vec();
-    for block in out.chunks_exact_mut(16) {
+    for block in out.as_chunks_mut::<16>().0 {
         cipher.decrypt_block(GenericArray::from_mut_slice(block));
     }
     out
@@ -222,8 +222,10 @@ fn parse_shot_image(payload: &[u8]) -> Option<ShotImage> {
         // 16-bit LE, already on a wider scale; downscale to 8-bit for the
         // detector below. Untested against real hardware (both real
         // captures we have are 8-bit).
-        raw.chunks_exact(2)
-            .map(|b| ((u16::from_le_bytes([b[0], b[1]]) >> 2).min(255)) as u8)
+        raw.as_chunks::<2>()
+            .0
+            .iter()
+            .map(|b| ((u16::from_le_bytes(*b) >> 2).min(255)) as u8)
             .collect()
     };
     Some(ShotImage {
