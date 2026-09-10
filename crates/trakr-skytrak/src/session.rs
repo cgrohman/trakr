@@ -241,6 +241,9 @@ impl SkytrakDriver {
                                 send(&mut stream, "SYS_CONFIG(chip-mapping)", &sys_config(false, self.right_handed, self.hw_putting_bit(), false)).await?;
                             }
                         }
+                        Some(Command::FireShot(_)) => {
+                            warn!("ignoring FireShot: real hardware reports shots itself, it can't be told to fake one");
+                        }
                     }
                 }
                 n = read(&mut stream, &mut buf) => {

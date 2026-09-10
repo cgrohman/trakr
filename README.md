@@ -60,6 +60,7 @@ Run `trakr <command> --help` for flags and examples on any subcommand.
 | `disconnect` | End the current session |
 | `events` | Stream session events (status, shots, errors) live |
 | `test-shot` | Send one synthetic shot straight to a simulator, bypassing the daemon |
+| `shot` | Fire a synthetic shot through a `connect --simulate` session -- see below |
 
 Full HTTP API reference: [docs/api.md](docs/api.md), machine-readable at
 `GET /v1/openapi.json` once the daemon is running. The API is the source of
@@ -101,6 +102,20 @@ trakr test-shot --host <address> --port 921
 This works today for heartbeat, ready state, arming, and handedness/club
 feedback from Muni. Real ball strikes won't produce real numbers in Muni yet
 — see the shot capture gap in Status below.
+
+To drive several shots through a round and watch trakr's own state react
+(not just prove the link once), use a simulated session instead -- unlike
+`test-shot`, this goes through the daemon, so shots show up in `trakr
+events` and the Tauri UI, and mode/handedness auto-switch from Muni's
+player-info responses exactly as they would with real hardware:
+
+```sh
+trakr serve --sim-host <address> --sim-port 921 &
+trakr connect --simulate
+trakr arm
+trakr shot                          # defaults; repeat with --speed/--vla/... per shot
+trakr events                        # watch it happen
+```
 
 ## Development
 

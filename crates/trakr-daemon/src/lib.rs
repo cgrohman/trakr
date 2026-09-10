@@ -5,6 +5,7 @@
 //! API is documented at `GET /v1/openapi.json` (also in `docs/api.md`).
 
 mod api;
+mod player_store;
 mod settings;
 mod state;
 
