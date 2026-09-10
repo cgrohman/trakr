@@ -18,7 +18,9 @@ research/muni-lmc/*.pdb
 research/muni-lmc/*.json
 research/muni-lmc/decompiled/
 research/oracle/*.dll
+research/oracle/*.dylib
 research/oracle/*.exe
+research/oracle/stsw_probe_macos
 research/oracle/*.bin
 research/oracle/*.sqlite
 research/OpenSkyPlus/
@@ -31,6 +33,9 @@ research/GSPro4OSP/
 /.playwright-mcp/
 .DS_Store
 research/oracle/*.sqlite-journal
+
+# Raw hardware capture dumps from TRAKR_CAPTURE_DIR (device-specific, large binary)
+research/oracle/captures/
 
 # Tauri app
 apps/trakr-ui/node_modules/
