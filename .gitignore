@@ -41,3 +41,7 @@ research/oracle/captures/
 apps/trakr-ui/node_modules/
 apps/trakr-ui/src-tauri/target/
 apps/trakr-ui/src-tauri/gen/
+
+# Scratch analysis notes -- may reference this machine's local network,
+# hostnames, or other details not meant for the public repo.
+claudedocs/
