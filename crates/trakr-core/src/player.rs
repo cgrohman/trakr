@@ -55,25 +55,117 @@ pub struct ClubProfile {
 }
 
 pub const CLUB_PROFILES: &[ClubProfile] = &[
-    ClubProfile { club: "DR", carry_yd: 214.0, ball_speed_mph: 140.0, vla_deg: 10.9, spin_rpm: 2686.0 },
-    ClubProfile { club: "3W", carry_yd: 195.0, ball_speed_mph: 130.0, vla_deg: 9.2, spin_rpm: 3655.0 },
-    ClubProfile { club: "5W", carry_yd: 180.0, ball_speed_mph: 124.0, vla_deg: 9.4, spin_rpm: 4350.0 },
-    ClubProfile { club: "3H", carry_yd: 170.0, ball_speed_mph: 121.0, vla_deg: 10.2, spin_rpm: 4587.0 },
-    ClubProfile { club: "3I", carry_yd: 170.0, ball_speed_mph: 118.0, vla_deg: 9.4, spin_rpm: 4360.0 },
-    ClubProfile { club: "4I", carry_yd: 160.0, ball_speed_mph: 116.0, vla_deg: 10.0, spin_rpm: 4500.0 },
-    ClubProfile { club: "5I", carry_yd: 155.0, ball_speed_mph: 115.0, vla_deg: 10.1, spin_rpm: 4700.0 },
-    ClubProfile { club: "6I", carry_yd: 150.0, ball_speed_mph: 112.0, vla_deg: 11.5, spin_rpm: 5100.0 },
-    ClubProfile { club: "7I", carry_yd: 140.0, ball_speed_mph: 109.0, vla_deg: 13.6, spin_rpm: 6200.0 },
-    ClubProfile { club: "8I", carry_yd: 130.0, ball_speed_mph: 106.0, vla_deg: 15.8, spin_rpm: 6800.0 },
-    ClubProfile { club: "9I", carry_yd: 115.0, ball_speed_mph: 101.0, vla_deg: 18.1, spin_rpm: 7500.0 },
-    ClubProfile { club: "PW", carry_yd: 105.0, ball_speed_mph: 96.0, vla_deg: 20.5, spin_rpm: 8300.0 },
-    ClubProfile { club: "GW", carry_yd: 95.0, ball_speed_mph: 90.0, vla_deg: 23.3, spin_rpm: 8700.0 },
-    ClubProfile { club: "SW", carry_yd: 85.0, ball_speed_mph: 85.0, vla_deg: 25.4, spin_rpm: 9200.0 },
-    ClubProfile { club: "LW", carry_yd: 65.0, ball_speed_mph: 74.0, vla_deg: 30.0, spin_rpm: 10000.0 },
+    ClubProfile {
+        club: "DR",
+        carry_yd: 214.0,
+        ball_speed_mph: 140.0,
+        vla_deg: 10.9,
+        spin_rpm: 2686.0,
+    },
+    ClubProfile {
+        club: "3W",
+        carry_yd: 195.0,
+        ball_speed_mph: 130.0,
+        vla_deg: 9.2,
+        spin_rpm: 3655.0,
+    },
+    ClubProfile {
+        club: "5W",
+        carry_yd: 180.0,
+        ball_speed_mph: 124.0,
+        vla_deg: 9.4,
+        spin_rpm: 4350.0,
+    },
+    ClubProfile {
+        club: "3H",
+        carry_yd: 170.0,
+        ball_speed_mph: 121.0,
+        vla_deg: 10.2,
+        spin_rpm: 4587.0,
+    },
+    ClubProfile {
+        club: "3I",
+        carry_yd: 170.0,
+        ball_speed_mph: 118.0,
+        vla_deg: 9.4,
+        spin_rpm: 4360.0,
+    },
+    ClubProfile {
+        club: "4I",
+        carry_yd: 160.0,
+        ball_speed_mph: 116.0,
+        vla_deg: 10.0,
+        spin_rpm: 4500.0,
+    },
+    ClubProfile {
+        club: "5I",
+        carry_yd: 155.0,
+        ball_speed_mph: 115.0,
+        vla_deg: 10.1,
+        spin_rpm: 4700.0,
+    },
+    ClubProfile {
+        club: "6I",
+        carry_yd: 150.0,
+        ball_speed_mph: 112.0,
+        vla_deg: 11.5,
+        spin_rpm: 5100.0,
+    },
+    ClubProfile {
+        club: "7I",
+        carry_yd: 140.0,
+        ball_speed_mph: 109.0,
+        vla_deg: 13.6,
+        spin_rpm: 6200.0,
+    },
+    ClubProfile {
+        club: "8I",
+        carry_yd: 130.0,
+        ball_speed_mph: 106.0,
+        vla_deg: 15.8,
+        spin_rpm: 6800.0,
+    },
+    ClubProfile {
+        club: "9I",
+        carry_yd: 115.0,
+        ball_speed_mph: 101.0,
+        vla_deg: 18.1,
+        spin_rpm: 7500.0,
+    },
+    ClubProfile {
+        club: "PW",
+        carry_yd: 105.0,
+        ball_speed_mph: 96.0,
+        vla_deg: 20.5,
+        spin_rpm: 8300.0,
+    },
+    ClubProfile {
+        club: "GW",
+        carry_yd: 95.0,
+        ball_speed_mph: 90.0,
+        vla_deg: 23.3,
+        spin_rpm: 8700.0,
+    },
+    ClubProfile {
+        club: "SW",
+        carry_yd: 85.0,
+        ball_speed_mph: 85.0,
+        vla_deg: 25.4,
+        spin_rpm: 9200.0,
+    },
+    ClubProfile {
+        club: "LW",
+        carry_yd: 65.0,
+        ball_speed_mph: 74.0,
+        vla_deg: 30.0,
+        spin_rpm: 10000.0,
+    },
 ];
 
 pub fn club_profile(club: &str) -> Option<&'static ClubProfile> {
-    CLUB_PROFILES.iter().find(|p| p.club.eq_ignore_ascii_case(club))
+    CLUB_PROFILES
+        .iter()
+        .find(|p| p.club.eq_ignore_ascii_case(club))
 }
 
 /// `(ball_speed_mph, vla_deg, spin_rpm)` for a plausible shot with `club`
